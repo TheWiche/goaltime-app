@@ -1,41 +1,82 @@
-# Empezando con Create React App
+# 🏟️ GoalTime
 
-Este proyecto fue inicializado con [Create React App](https://github.com/facebook/create-react-app).
+**GoalTime** es una aplicación web diseñada para facilitar la **reserva de canchas sintéticas** de manera rápida, sencilla y confiable.  
+El objetivo es conectar a los jugadores con los escenarios deportivos, optimizando la experiencia de agendar partidos y gestionando horarios disponibles.
 
-## Scripts disponibles
+Este proyecto fue creado con [Create React App](https://github.com/facebook/create-react-app).
+
+---
+
+## 🚀 Características principales
+
+- 📅 Reserva de canchas en línea en tiempo real.  
+- ⏰ Gestión de horarios disponibles.  
+- 👥 Posibilidad de crear equipos y compartir partidos.  
+- 📱 Interfaz moderna, responsive y fácil de usar.  
+
+---
+
+## 🛠️ Tecnologías utilizadas
+
+- ⚛️ **React** – Frontend principal.  
+- 🔥 **Firebase** – Hosting, autenticación y base de datos.  
+- 🎨 **Tailwind CSS** – Estilos rápidos y personalizables.  
+
+---
+
+## 📂 Scripts disponibles
 
 En el directorio del proyecto, puedes ejecutar:
 
 ### `npm start`
-
-Ejecuta la app en modo de desarrollo.  
-Abre [http://localhost:3000](http://localhost:3000) para verla en tu navegador.
-
-La página se recargará cuando hagas cambios.  
-También podrás ver errores de *lint* en la consola.
+Ejecuta la app en modo desarrollo.  
+Abre [http://localhost:3000](http://localhost:3000) en tu navegador.  
+La página se recargará con cada cambio y verás errores de *lint* en la consola.
 
 ### `npm test`
-
-Lanza el *test runner* en modo interactivo de observación.  
-Mira la sección sobre [running tests](https://facebook.github.io/create-react-app/docs/running-tests) para más información.
+Lanza el *test runner* en modo interactivo.  
+Más info: [running tests](https://facebook.github.io/create-react-app/docs/running-tests).
 
 ### `npm run build`
-
-Genera la app para producción en la carpeta `build`.  
-Agrupa correctamente React en modo producción y optimiza el *build* para el mejor rendimiento.
-
-El *build* es minificado y los nombres de archivo incluyen *hashes*.  
-¡Tu app está lista para desplegarse!
-
-Consulta la sección sobre [deployment](https://facebook.github.io/create-react-app/docs/deployment) para más información.
+Crea el build optimizado para producción en la carpeta `build/`.  
+Los archivos son minificados y listos para desplegar.  
+Más info: [deployment](https://facebook.github.io/create-react-app/docs/deployment).
 
 ### `npm run eject`
+⚠️ **Nota:** este comando es irreversible.  
+Copia toda la configuración de *webpack, Babel, ESLint*, etc., para darte control total.  
 
-**Nota: esta es una operación sin retorno. Una vez ejecutes `eject`, ¡no puedes volver atrás!**
+---
 
-Si no estás satisfecho con la herramienta de *build* y las configuraciones incluidas, puedes ejecutar `eject` en cualquier momento. Este comando removerá la única dependencia principal de tu proyecto.
+## 🌐 Despliegue
 
-En su lugar, copiará todos los archivos de configuración y las dependencias transitivas (webpack, Babel, ESLint, etc.) directamente a tu proyecto, para que tengas control total sobre ellos.  
-Todos los comandos, excepto `eject`, seguirán funcionando, pero ahora apuntarán a los scripts copiados para que los ajustes a tu gusto. En este punto estarás por tu cuenta.
+La aplicación está preparada para ser desplegada en:  
+- **Firebase Hosting**  
 
-No es obligatorio usar `eject`. El conjunto de funcionalidades incluidas es suficiente para despliegues pequeños y medianos, y no deberías sentirte obligado a usar esta opción. Sin embargo, entendemos que esta herramienta no sería tan útil si no pudieras personalizarla cuando lo necesites.
+---
+
+## 📖 Aprende más
+
+- Documentación oficial de [Create React App](https://facebook.github.io/create-react-app/docs/getting-started)  
+- Documentación oficial de [React](https://reactjs.org/)  
+
+---
+
+## ✨ Futuras mejoras
+
+- ✅ Pasarela de pagos para reservar en línea.  
+- ✅ Sistema de notificaciones push.  
+- ✅ Búsqueda por ubicación.  
+- ✅ Integración con Google Maps para ubicar canchas cercanas.  
+
+---
+
+## 👨‍💻 Autor
+
+**Nelson Cotes**  
+Estudiante de Ingeniería de Sistemas – Universidad de La Guajira.  
+Apasionado por el desarrollo de soluciones innovadoras que mejoren la vida de las personas.  
+
+---
+
+📌 *GoalTime – Porque jugar nunca fue tan fácil.*
