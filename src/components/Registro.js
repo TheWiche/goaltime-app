@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import { useNotification } from '../context/NotificationContext';
 
 // Importaciones de MUI
 import Button from '@mui/material/Button';
@@ -15,6 +16,8 @@ import Container from '@mui/material/Container';
 
 // Recibiremos una nueva 'prop' llamada onToggleForm para cambiar de vista
 function Registro({ onToggleForm }) {
+  const { showNotification } = useNotification();
+
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,7 +41,7 @@ function Registro({ onToggleForm }) {
       // El listener en App.js se encargará de loguear al usuario automáticamente
     } catch (error) {
       console.error("Error al registrar: ", error);
-      alert("Hubo un error al registrar. El correo puede que ya esté en uso.");
+      showNotification("Error al registrar. El correo puede que ya esté en uso.", 'error'); //
     }
   };
 

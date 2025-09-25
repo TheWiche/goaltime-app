@@ -1,11 +1,14 @@
-// Archivo: src/components/dueño/PanelDueño.js
+// Archivo: src/components/dueño/PanelAsociado.js
 
 import React, { useState } from 'react';
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore"; 
 import { db } from '../../firebase'; // Subimos un nivel para encontrar firebase.js
+import { useNotification } from '../../context/NotificationContext'; 
 
 // Este componente recibe 'currentUser' como un "prop" desde App.js
-function PanelDueño({ currentUser }) {
+function PanelAsociado({ currentUser }) {
+  const { showNotification } = useNotification();
+
   // --- ESTADO DEL FORMULARIO ---
   const [nombreCancha, setNombreCancha] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -34,17 +37,17 @@ function PanelDueño({ currentUser }) {
         await updateDoc(userDocRef, {
           rol: "dueño"
         });
-        alert("¡Felicidades! Tu rol ha sido actualizado a Dueño de Cancha.");
+        showNotification('¡Felicidades! Tu rol ha sido actualizado a Asociado.', 'info');
       }
       
-      alert("¡Cancha enviada para aprobación! El administrador lo revisará pronto.");
+      showNotification('¡Cancha enviada para aprobación con éxito!', 'success'); 
       // Limpiamos los campos del formulario después del envío exitoso
       setNombreCancha('');
       setDireccion('');
 
     } catch (error) {
       console.error("Error al registrar el cancha: ", error);
-      alert("Hubo un error al registrar tu cancha.");
+      showNotification("Hubo un error al registrar tu cancha.", 'error'); 
     }
   };
 
@@ -78,4 +81,4 @@ function PanelDueño({ currentUser }) {
   );
 }
 
-export default PanelDueño;
+export default PanelAsociado;

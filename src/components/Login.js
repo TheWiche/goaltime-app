@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
+import { useNotification } from '../context/NotificationContext'; 
 
 // Importaciones de componentes de MUI
 import Button from '@mui/material/Button';
@@ -13,6 +14,7 @@ import Container from '@mui/material/Container';
 import Link from '@mui/material/Link';
 
 function Login({ onToggleForm }) {
+  const { showNotification } = useNotification();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -28,7 +30,7 @@ function Login({ onToggleForm }) {
       // La alerta de éxito la manejaremos de otra forma más adelante
     } catch (error) {
       console.error("Error al iniciar sesión: ", error);
-      alert("Credenciales incorrectas.");
+      showNotification("Credenciales incorrectas. Verifica tus datos.", 'error'); 
     }
   };
 

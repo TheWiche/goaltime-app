@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { db } from '../../firebase';
+import { useNotification } from '../../context/NotificationContext'; 
 
 function PanelAdmin() {
+  const { showNotification } = useNotification();
   // --- ESTADO ---
   // Guardaremos la lista de canchas pendientes en un array.
   const [canchasPendientes, setCanchasPendientes] = useState([]);
@@ -37,7 +39,7 @@ function PanelAdmin() {
       await updateDoc(canchaRef, {
         estado: "aprobado"
       });
-      alert("Cancha aprobada con éxito.");
+      showNotification("Cancha aprobada con éxito.", 'success'); 
     } catch (error) {
       console.error("Error al aprobar: ", error);
     }
@@ -50,7 +52,7 @@ function PanelAdmin() {
       await updateDoc(canchaRef, {
         estado: "rechazado"
       });
-      alert("Cancha rechazada.");
+      showNotification("La cancha ha sido rechazada.", 'warning'); 
     } catch (error) {
       console.error("Error al rechazar: ", error);
     }
