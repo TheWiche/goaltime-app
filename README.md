@@ -25,34 +25,65 @@ Este proyecto fue creado con [Create React App](https://github.com/facebook/crea
 
 ---
 
-## 📂 Scripts disponibles
+## 🚀 Cómo Empezar
 
-En el directorio del proyecto, puedes ejecutar:
+Sigue estas instrucciones para obtener una copia del proyecto y ejecutarla en tu máquina local para desarrollo y pruebas.
 
-### `npm start`
-Ejecuta la app en modo desarrollo.  
-Abre [http://localhost:3000](http://localhost:3000) en tu navegador.  
-La página se recargará con cada cambio y verás errores de *lint* en la consola.
+### ✅ Prerrequisitos
 
-### `npm test`
-Lanza el *test runner* en modo interactivo.  
-Más info: [running tests](https://facebook.github.io/create-react-app/docs/running-tests).
+Antes de comenzar, asegúrate de tener instalado lo siguiente en tu sistema:
 
-### `npm run build`
-Crea el build optimizado para producción en la carpeta `build/`.  
-Los archivos son minificados y listos para desplegar.  
-Más info: [deployment](https://facebook.github.io/create-react-app/docs/deployment).
-
-### `npm run eject`
-⚠️ **Nota:** este comando es irreversible.  
-Copia toda la configuración de *webpack, Babel, ESLint*, etc., para darte control total.  
+* **Node.js** (versión LTS recomendada). Puedes descargarlo desde [nodejs.org](https://nodejs.org/).
+* **Firebase CLI** (Command Line Interface). Si no lo tienes, instálalo globalmente abriendo una terminal y ejecutando:
+    ```sh
+    npm install -g firebase-tools
+    ```
 
 ---
 
-## 🌐 Despliegue
+### 📋 Guía de Instalación
 
-La aplicación está preparada para ser desplegada en:  
-- **Firebase Hosting**  
+Sigue estos pasos para poner en marcha el proyecto:
+
+1.  **Clona el Repositorio**
+    Abre tu terminal, navega a la carpeta donde quieres guardar el proyecto y ejecuta:
+    ```sh
+    git clone https://github.com/TheWiche/goaltime-app.git
+    ```
+    
+2.  **Navega al Directorio del Proyecto**
+    ```sh
+    cd goaltime-app
+    ```
+
+3.  **Instala las Dependencias**
+    Este comando leerá el archivo `package.json` y descargará todas las librerías necesarias para que el proyecto funcione (React, Material-UI, Firebase, etc.).
+    ```sh
+    npm install
+    ```
+
+4.  **Configura tus Variables de Entorno (¡Paso Crucial!)**
+    Por seguridad, las credenciales del proyecto no se guardan en el repositorio. Debes crearlas localmente.
+
+    * En la **carpeta raíz de tu proyecto** (al mismo nivel que `package.json`), crea un nuevo archivo llamado `.env`.
+    * Abre el archivo `.env` y pega las credenciasles (Dichas credenciales debes pedirselas al propietario).
+
+5.  **Ejecuta la Aplicación**
+    Una vez instaladas las dependencias y configurado el archivo `.env`, inicia el servidor de desarrollo local. **Es muy importante reiniciar el servidor si ya estaba corriendo para que cargue las nuevas variables de entorno.**
+    ```sh
+    npm start
+    ```
+    La aplicación se abrirá automáticamente en tu navegador en `http://localhost:3000`.
+
+---
+
+## 🔧 Scripts Disponibles
+
+En el directorio del proyecto, puedes ejecutar:
+
+* `npm start`: Inicia la app en modo de desarrollo.
+* `npm run build`: Compila la app para producción en la carpeta `build`.
+* `npm test`: Ejecuta el lanzador de pruebas (si está configurado).
 
 ---
 
