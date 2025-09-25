@@ -5,17 +5,26 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from './firebase'; // Importamos todo desde firebase
 
+import { ThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+
 import Registro from './components/Registro';
 import Login from './components/Login';
 import PanelDueño from './components/dueño/PanelDueño'; 
 import PanelAdmin from './components/admin/PanelAdmin'; 
 import './App.css';
 
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+  },
+});
+
 function App() {
   // --- ESTADO ---
   // currentUser guardará la información del usuario con sesión activa, o será 'null' si nadie ha iniciado sesión.
   const [currentUser, setCurrentUser] = useState(null);
-
+  const [showLogin, setShowLogin] = useState(true);
   // --- EFECTO (EL OYENTE) ---
   // useEffect se ejecuta una sola vez cuando el componente App se carga.
   useEffect(() => {
@@ -55,36 +64,38 @@ function App() {
     }
   };
 
+  // Invierte el valor de showLogin para cambiar de formulario.
+  const toggleForm = () => {
+    setShowLogin(!showLogin);
+  };
+
   // --- RENDERIZADO CONDICIONAL ---
   // Aquí decidimos qué mostrar en la pantalla basándonos en si 'currentUser' tiene datos o es 'null'.
+  
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>Bienvenido a GoalTime</h1>
+    <ThemeProvider theme={darkTheme}>
+      <CssBaseline />
+      <div className="App">
+        <header className="App-header">
+          <h1>Bienvenido a GoalTime</h1>
 
-        {currentUser ? (
-          <div>
-            <h2>Hola, {currentUser.nombre}!</h2>
-            <p>Tu rol es: <strong>{currentUser.rol.toUpperCase()}</strong></p>
-            <button onClick={handleLogout}>Cerrar Sesión</button>
-
-            {/* AQUÍ ESTÁ EL CAMBIO PRINCIPAL */}
-            {currentUser.rol === 'cliente' && <div>Panel del Cliente (próximamente)</div>}
-            
-            {/* 2. REEMPLAZA EL DIV CON EL NUEVO COMPONENTE Y PÁSALE LOS DATOS DEL USUARIO */}
-            {currentUser.rol === 'dueño' && <PanelDueño currentUser={currentUser} />}
-            
-            {currentUser.rol === 'admin' && <PanelAdmin />}
-          </div>
-        ) : (
-          <div>
-            <Registro />
-            <hr />
-            <Login />
-          </div>
-        )}
-      </header>
-    </div>
+          {currentUser ? (
+            <div>
+              {/* Aquí va la lógica cuando el usuario YA ha iniciado sesión */}
+            </div>
+          ) : (
+            // 3. RENDERIZADO CONDICIONAL: Muestra un componente u otro.
+            <div>
+              {showLogin ? (
+                <Login onToggleForm={toggleForm} />
+              ) : (
+                <Registro onToggleForm={toggleForm} />
+              )}
+            </div>
+          )}
+        </header>
+      </div>
+    </ThemeProvider>
   );
 }
 

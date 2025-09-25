@@ -10,9 +10,10 @@ Este proyecto fue creado con [Create React App](https://github.com/facebook/crea
 ## 🚀 Características principales
 
 - 📅 Reserva de canchas en línea en tiempo real.  
-- ⏰ Gestión de horarios disponibles.  
-- 👥 Posibilidad de crear equipos y compartir partidos.  
+- ⏰ Gestión de horarios disponibles.   
+- ✅ Integración con Google Maps para ubicar canchas cercanas.  
 - 📱 Interfaz moderna, responsive y fácil de usar.  
+
 
 ---
 
@@ -20,7 +21,7 @@ Este proyecto fue creado con [Create React App](https://github.com/facebook/crea
 
 - ⚛️ **React** – Frontend principal.  
 - 🔥 **Firebase** – Hosting, autenticación y base de datos.  
-- 🎨 **Tailwind CSS** – Estilos rápidos y personalizables.  
+- 🎨 **Material-UI (MUI)** – Estilos rápidos y personalizables.  
 
 ---
 
@@ -66,8 +67,8 @@ La aplicación está preparada para ser desplegada en:
 
 - ✅ Pasarela de pagos para reservar en línea.  
 - ✅ Sistema de notificaciones push.  
+- ✅ Posibilidad de crear equipos y compartir partidos. 
 - ✅ Búsqueda por ubicación.  
-- ✅ Integración con Google Maps para ubicar canchas cercanas.  
 
 ---
 
