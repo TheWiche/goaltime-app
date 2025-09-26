@@ -1,13 +1,8 @@
-// Archivo: src/components/admin/PanelAdmin.js (versión completa y final)
-
-import React from 'react';
-import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, doc, updateDoc, writeBatch } from "firebase/firestore";
-import { db } from '../../firebase';
+import React, { useState, useEffect } from 'react';
+import * as adminService from '../../api/firebaseService';
 import { useNotification } from '../../context/NotificationContext';
 import { Typography, Box, Paper, Button, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, CircularProgress } from '@mui/material';
 
-// El componente ahora solo recibe la vista activa como prop
 function PanelAdmin({ activeView }) {
     const { showNotification } = useNotification();
     const [canchasPendientes, setCanchasPendientes] = useState([]);
@@ -15,31 +10,24 @@ function PanelAdmin({ activeView }) {
     const [usuarios, setUsuarios] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // 2. El useEffect ahora es mucho más limpio y declarativo
     useEffect(() => {
-        const qCanchas = query(collection(db, "canchas"), where("estado", "==", "pendiente"));
-        const qSolicitudes = query(collection(db, "solicitudesDeSocios"), where("estado", "==", "pendiente"));
-        const qUsuarios = query(collection(db, "users"));
-
-        const unsubCanchas = onSnapshot(qCanchas, snapshot => setCanchasPendientes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-        const unsubSolicitudes = onSnapshot(qSolicitudes, snapshot => setSolicitudesPendientes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-        const unsubUsuarios = onSnapshot(qUsuarios, snapshot => {
-            setUsuarios(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const unsubCanchas = adminService.listenToPendingCourts(setCanchasPendientes);
+        const unsubSolicitudes = adminService.listenToPendingPartnerRequests(setSolicitudesPendientes);
+        // Hacemos que la carga termine cuando se carguen los usuarios
+        const unsubUsuarios = adminService.listenToAllUsers(users => {
+            setUsuarios(users);
             setLoading(false);
         });
 
+        // La función de limpieza ahora cancela todas las suscripciones
         return () => { unsubCanchas(); unsubSolicitudes(); unsubUsuarios(); };
     }, []);
     
-    // --- LÓGICA PARA APROBAR SOCIOS ---
+    // 3. Todas las funciones 'handle' ahora llaman a nuestro servicio
     const handleAprobarSocio = async (solicitud) => {
-        const batch = writeBatch(db);
-        const solicitudRef = doc(db, "solicitudesDeSocios", solicitud.id);
-        batch.update(solicitudRef, { estado: "aprobada" });
-        const userRef = doc(db, "users", solicitud.userId);
-        batch.update(userRef, { rol: "asociado" });
-
         try {
-            await batch.commit();
+            await adminService.approvePartnerRequest(solicitud);
             showNotification('Socio aprobado y rol actualizado con éxito.', 'success');
         } catch (error) {
             console.error("Error al aprobar socio: ", error);
@@ -48,20 +36,17 @@ function PanelAdmin({ activeView }) {
     };
 
     const handleRechazarSocio = async (solicitudId) => {
-        const solicitudRef = doc(db, "solicitudesDeSocios", solicitudId);
         try {
-            await updateDoc(solicitudRef, { estado: "rechazada" });
+            await adminService.updatePartnerRequestStatus(solicitudId, "rechazada");
             showNotification('La solicitud ha sido rechazada.', 'warning');
         } catch (error) {
             showNotification('Error al rechazar la solicitud.', 'error');
         }
     };
   
-    // --- LÓGICA PARA APROBAR CANCHAS ---
     const handleAprobarCancha = async (canchaId) => {
-        const canchaRef = doc(db, "canchas", canchaId);
         try {
-            await updateDoc(canchaRef, { estado: "aprobado" });
+            await adminService.updateCourtStatus(canchaId, "aprobado");
             showNotification("Cancha aprobada con éxito.", 'success');
         } catch (error) {
             showNotification('Error al aprobar la cancha.', 'error');
@@ -69,15 +54,15 @@ function PanelAdmin({ activeView }) {
     };
 
     const handleRechazarCancha = async (canchaId) => {
-        const canchaRef = doc(db, "canchas", canchaId);
         try {
-            await updateDoc(canchaRef, { estado: "rechazado" });
+            await adminService.updateCourtStatus(canchaId, "rechazado");
             showNotification("La cancha ha sido rechazada.", 'warning');
         } catch (error) {
             showNotification('Error al rechazar la cancha.', 'error');
         }
     };
 
+    // 4. El resto del componente (la parte visual) no cambia en absoluto
     if (loading) return <CircularProgress />;
 
     // Basado en la 'activeView' que recibe, muestra una cosa u otra

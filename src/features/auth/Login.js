@@ -1,36 +1,32 @@
 // Archivo: src/components/Login.js
 
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";
-import { useNotification } from '../context/NotificationContext'; 
+import { useNotification } from '../../context/NotificationContext'; 
+import { loginUser } from '../../api/firebaseService';
 
 // Importaciones de componentes de MUI
-import Button from '@mui/material/Button';
-import TextField from '@mui/material/TextField';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import Container from '@mui/material/Container';
-import Link from '@mui/material/Link';
+import { Button, TextField, Box, Typography, Container, Link } from '@mui/material';
 
 function Login({ onToggleForm }) {
   const { showNotification } = useNotification();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // La lógica de Firebase no cambia en absoluto
   const handleLogin = async (e) => {
     e.preventDefault();
     if (!email || !password) {
-      alert("Por favor, ingresa tu correo y contraseña.");
+      showNotification("Por favor, ingresa tu correo y contraseña.", "warning");
       return;
     }
+    setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      // La alerta de éxito la manejaremos de otra forma más adelante
+      await loginUser(email, password);
     } catch (error) {
       console.error("Error al iniciar sesión: ", error);
-      showNotification("Credenciales incorrectas. Verifica tus datos.", 'error'); 
+      showNotification("Credenciales incorrectas. Verifica tus datos.", 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -60,6 +56,7 @@ function Login({ onToggleForm }) {
             autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -72,14 +69,16 @@ function Login({ onToggleForm }) {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
           />
           <Button
             type="submit"
             fullWidth
             variant="contained" // Este es el estilo del botón principal
             sx={{ mt: 3, mb: 2 }}
+            disabled={loading}
           >
-            Iniciar Sesión
+            {loading ? 'Ingresando...' : 'Iniciar Sesión'}
           </Button>
           <Link href="#" variant="body2" onClick={onToggleForm} sx={{cursor: 'pointer'}}>
             {"¿No tienes una cuenta? Regístrate"}
