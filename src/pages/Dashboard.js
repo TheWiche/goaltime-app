@@ -51,7 +51,7 @@ function Dashboard({ currentUser, handleLogout }) {
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar>
-          <Box component="img" sx={{ height: 40, mr: 1.5 }} alt="GoalTime Logo" src={logo} />
+          <Box component="img" sx={{ height: 40, mr: 0.2 }} alt="GoalTime Logo" src={logo} />
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             GoalTime
           </Typography>
