@@ -155,15 +155,6 @@ function AboutUs() {
         </MDTypography>
         <Grid container spacing={3} justifyContent="center">
           <Grid item xs={12} sm={6} lg={3}>
-            <TeamCard name="Edwin Ceballos" title="Desarrollador" />
-          </Grid>
-          <Grid item xs={12} sm={6} lg={3}>
-            <TeamCard name="Joel Barrios" title="Desarrollador" />
-          </Grid>
-          <Grid item xs={12} sm={6} lg={3}>
-            <TeamCard name="Juan Lemus" title="Desarrollador" />
-          </Grid>
-          <Grid item xs={12} sm={6} lg={3}>
             <TeamCard name="Nelson Cotes" title="Desarrollador" />
           </Grid>
         </Grid>
