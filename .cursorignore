@@ -1,0 +1,13 @@
+# No tocar el backend de Firebase
+functions/
+firebase.json
+.firebaserc
+firestore.rules
+storage.rules
+
+# No tocar variables de entorno
+.env
+.env.local
+
+# No tocar node_modules
+node_modules/

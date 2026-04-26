@@ -1,0 +1,128 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  important: "#app",
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#3b82f6",
+          600: "#2563eb",
+          700: "#1d4ed8",
+          800: "#1e40af",
+          900: "#1e3a8a",
+          DEFAULT: "#1E3A8A",
+        },
+        secondary: {
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#3b82f6",
+          600: "#2563eb",
+          700: "#1d4ed8",
+          DEFAULT: "#3B82F6",
+        },
+        cta: {
+          50: "#fff7ed",
+          100: "#ffedd5",
+          200: "#fed7aa",
+          300: "#fdba74",
+          400: "#fb923c",
+          500: "#f97316",
+          600: "#ea580c",
+          700: "#c2410c",
+          DEFAULT: "#F97316",
+        },
+        surface: {
+          50: "#f8fafc",
+          100: "#f1f5f9",
+          200: "#e2e8f0",
+          300: "#cbd5e1",
+          400: "#94a3b8",
+          500: "#64748b",
+          DEFAULT: "#EFF6FF",
+        },
+        dark: {
+          DEFAULT: "#1e3a8a",
+          800: "#1e40af",
+          900: "#1a202c",
+        },
+        // Mantener goaltime legacy para retrocompatibilidad
+        goaltime: {
+          50:  "#e6faf0",
+          100: "#c3f3d6",
+          200: "#7de8ae",
+          300: "#42dd8a",
+          400: "#19D470",
+          500: "#14b85f",
+          600: "#0f9b4e",
+          700: "#00a142",
+          800: "#007530",
+          900: "#004d1f",
+          DEFAULT: "#19D470",
+        },
+      },
+      fontFamily: {
+        sans: ["Open Sans", "system-ui", "-apple-system", "sans-serif"],
+        heading: ["Poppins", "system-ui", "-apple-system", "sans-serif"],
+      },
+      boxShadow: {
+        sm: "0 1px 2px rgba(0,0,0,0.05)",
+        md: "0 4px 6px rgba(0,0,0,0.1)",
+        lg: "0 10px 15px rgba(0,0,0,0.1)",
+        xl: "0 20px 25px rgba(0,0,0,0.15)",
+        card: "0 4px 6px rgba(0,0,0,0.1)",
+        "card-hover": "0 10px 15px rgba(0,0,0,0.1)",
+        glass: "0 8px 32px 0 rgba(31, 38, 135, 0.15)",
+      },
+      backdropBlur: {
+        xs: "2px",
+        glass: "10px",
+        "glass-lg": "20px",
+      },
+      borderRadius: {
+        xl: "1rem",
+        "2xl": "1.25rem",
+        "3xl": "1.5rem",
+      },
+      animation: {
+        "fade-in": "fadeIn 0.3s ease-in-out",
+        "slide-up": "slideUp 0.4s ease-out",
+        "slide-down": "slideDown 0.4s ease-out",
+        shimmer: "shimmer 2s ease-in-out infinite",
+        pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        float: "float 3s ease-in-out infinite",
+      },
+      keyframes: {
+        fadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        slideUp: {
+          "0%": { opacity: "0", transform: "translateY(16px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        slideDown: {
+          "0%": { opacity: "0", transform: "translateY(-16px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+        float: {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+      },
+    },
+  },
+  plugins: [],
+};

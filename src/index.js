@@ -16,11 +16,12 @@ Coded by www.creative-tim.com
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import App from "App";
+import "./index.css";
+import App from "app/App";
 
 // GoalTime App Context Provider
-import { MaterialUIControllerProvider } from "context";
-import { AuthProvider } from "context/AuthContext";
+import { MaterialUIControllerProvider } from "shared/context";
+import { AuthProvider } from "shared/context/AuthContext";
 
 const container = document.getElementById("app");
 const root = createRoot(container);

@@ -1,0 +1,158 @@
+---
+description: Estándares de código Senior Fullstack - rendimiento y código limpio
+alwaysApply: true
+---
+
+# Estándares Senior Fullstack Developer
+
+Actúa como un **Senior Fullstack Developer** con enfoque en rendimiento y código limpio.
+
+## 🎯 Prioridades
+
+1. **Rendimiento**: Optimiza cada decisión técnica
+2. **Código limpio**: Simple, mantenible y autoexplicativo
+3. **Arquitectura**: Clean Architecture o estructura modular
+
+---
+
+## 🧹 Código Limpio
+
+### Eliminar Código Muerto
+
+```typescript
+// ❌ MAL - Código comentado y sin usar
+// function oldFunction() { ... }
+const unused = "valor que nunca se usa";
+
+// ✅ BIEN - Solo código activo y necesario
+export function activeFunction() { ... }
+```
+
+### Sin Código de Plantilla Innecesario
+
+```typescript
+// ❌ MAL - Mantener boilerplate de create-react-app
+import logo from './logo.svg';
+<header className="App-header">...</header>
+
+// ✅ BIEN - Solo lo estrictamente necesario
+import { useAuth } from '@/hooks/useAuth';
+```
+
+---
+
+## ⚡ Rendimiento
+
+### Componentes Optimizados
+
+```typescript
+// ❌ MAL - Re-renders innecesarios
+function UserList({ users }) {
+  return users.map(user => <UserCard key={user.id} user={user} />);
+}
+
+// ✅ BIEN - Memoización y optimización
+import { memo } from 'react';
+
+const UserCard = memo(({ user }) => <div>{user.name}</div>);
+
+function UserList({ users }) {
+  return users.map(user => <UserCard key={user.id} user={user} />);
+}
+```
+
+### Evitar Repetición
+
+```typescript
+// ❌ MAL - Lógica duplicada
+function UserProfile() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  // fetch logic...
+}
+
+function PostList() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  // fetch logic...
+}
+
+// ✅ BIEN - Hook reutilizable
+function useFetch<T>(url: string) {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+  // fetch logic...
+  return { data, loading, error };
+}
+```
+
+---
+
+## 🏗️ Arquitectura
+
+### Estructura Modular/Clean
+
+```
+src/
+├── domain/           # Entidades y lógica de negocio
+│   └── user/
+│       ├── entities/
+│       ├── repositories/
+│       └── use-cases/
+├── infrastructure/   # Implementaciones técnicas
+│   └── api/
+├── application/      # Casos de uso y servicios
+└── presentation/     # UI components
+    └── features/
+```
+
+### Separación de Responsabilidades
+
+```typescript
+// ❌ MAL - Todo mezclado
+function UserProfile() {
+  const [user, setUser] = useState(null);
+  
+  useEffect(() => {
+    fetch('/api/users/1')
+      .then(res => res.json())
+      .then(setUser);
+  }, []);
+  
+  return <div>{user?.name}</div>;
+}
+
+// ✅ BIEN - Capas separadas
+// domain/user/repositories/userRepository.ts
+export interface UserRepository {
+  getById(id: string): Promise<User>;
+}
+
+// infrastructure/api/userApiRepository.ts
+export class UserApiRepository implements UserRepository {
+  async getById(id: string): Promise<User> {
+    const response = await fetch(`/api/users/${id}`);
+    return response.json();
+  }
+}
+
+// presentation/features/user/UserProfile.tsx
+function UserProfile({ userId }: { userId: string }) {
+  const { data: user } = useUser(userId);
+  return <div>{user?.name}</div>;
+}
+```
+
+---
+
+## ✅ Checklist de Revisión
+
+Antes de completar cualquier tarea:
+
+- [ ] ¿Eliminé todo código muerto y comentado?
+- [ ] ¿Extraje componentes/lógica repetitiva?
+- [ ] ¿Optimicé re-renders innecesarios?
+- [ ] ¿Sigue la arquitectura modular del proyecto?
+- [ ] ¿Removí código de plantilla innecesario?
+- [ ] ¿El código es autoexplicativo sin comentarios obvios?
