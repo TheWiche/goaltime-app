@@ -1,24 +1,18 @@
-import { MDButton, MDBox, MDTypography, MDAvatar } from "shared/components/md-shims";
-// src/layouts/admin-users/components/EditUserRoleModal/index.js
-
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogActions,
-  Select,
-  MenuItem,
   FormControl,
   InputLabel,
-  CircularProgress,
-  Grid,
-  Divider, // Importa Divider
+  Select,
+  MenuItem,
+  Avatar,
+  IconButton,
 } from "@mui/material";
- // Importa MDBox
- // Importa MDTypography
- // Importa MDAvatar
+import { Close, AdminPanelSettings, Person } from "@mui/icons-material";
+import { GlassCard } from "shared/components/ui";
+import { Button } from "shared/components/ui";
 
 function EditUserRoleModal({ open, onClose, onSubmit, loading, user }) {
   const [newRole, setNewRole] = useState("");
@@ -27,83 +21,134 @@ function EditUserRoleModal({ open, onClose, onSubmit, loading, user }) {
     if (user) {
       setNewRole(user.role || "cliente");
     } else {
-      setNewRole("cliente"); // Resetea si no hay usuario
+      setNewRole("cliente");
     }
   }, [user, open]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!loading && user) {
-      // Asegura que 'user' no sea null
       onSubmit(user, newRole);
     }
   };
 
+  const roleLabels = {
+    cliente: "Cliente",
+    asociado: "Asociado",
+    admin: "Administrador",
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Editar Rol de Usuario</DialogTitle>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: "20px",
+          overflow: "hidden",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+        },
+      }}
+    >
+      <div className="relative bg-gradient-to-br from-primary to-primary-600 px-6 pt-6 pb-8">
+        <IconButton
+          onClick={onClose}
+          size="small"
+          sx={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            color: "white",
+            bgcolor: "rgba(255,255,255,0.15)",
+            "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
+          }}
+        >
+          <Close fontSize="small" />
+        </IconButton>
+        <div className="flex items-center gap-3 pr-10">
+          <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
+            <AdminPanelSettings sx={{ color: "white", fontSize: 26 }} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold font-heading text-white">Editar rol de usuario</h2>
+            <p className="text-sm text-white/80">Asigna permisos en GoalTime</p>
+          </div>
+        </div>
+      </div>
+
       {user && (
         <form onSubmit={handleSubmit}>
-          <DialogContent>
-            {/* Sección de Información del Usuario Mejorada */}
-            <MDBox display="flex" alignItems="center" mb={2}>
-              <MDAvatar name={user.name || "?"} size="md" sx={{ mr: 2 }} />
-              <MDBox>
-                <MDTypography variant="h6" fontWeight="medium">
-                  {user.name || "Usuario"}
-                </MDTypography>
-                <MDTypography variant="caption" color="text">
-                  {user.email || "Email no disponible"}
-                </MDTypography>
-              </MDBox>
-            </MDBox>
-            <Divider sx={{ my: 1 }} />
+          <DialogContent sx={{ p: 0 }}>
+            <div className="px-6 py-5 -mt-4">
+              <GlassCard className="p-4 mb-5" hover={false}>
+                <div className="flex items-center gap-4">
+                  <Avatar
+                    src={user.photoURL || ""}
+                    alt={user.name || ""}
+                    sx={{
+                      width: 56,
+                      height: 56,
+                      fontWeight: 700,
+                      background: "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)",
+                    }}
+                  >
+                    {user.name ? user.name[0].toUpperCase() : "?"}
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold font-heading text-primary-900 truncate text-base">
+                      {user.name || "Usuario"}
+                    </p>
+                    <p className="text-sm text-surface-500 truncate">{user.email || "Sin correo"}</p>
+                  </div>
+                </div>
+              </GlassCard>
 
-            {/* Selector de Rol */}
-            <MDBox mt={2}>
-              <FormControl variant="standard" fullWidth margin="dense">
-                <InputLabel id="edit-role-select-label">Nuevo Rol</InputLabel>
+              <FormControl fullWidth size="small" variant="outlined">
+                <InputLabel id="edit-role-label">Nuevo rol</InputLabel>
                 <Select
-                  labelId="edit-role-select-label"
+                  labelId="edit-role-label"
                   id="newRole"
+                  label="Nuevo rol"
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value)}
-                  label="Nuevo Rol"
-                  // Deshabilita la selección si es el admin actual intentando quitarse el rol
-                  disabled={
-                    loading ||
-                    (user.role === "admin" &&
-                      newRole !==
-                        "admin") /* Agrega lógica para detectar si es el admin actual si lo necesitas */
-                  }
+                  disabled={loading}
+                  sx={{
+                    borderRadius: "12px",
+                    "& .MuiOutlinedInput-notchedOutline": {
+                      borderColor: "rgba(30, 58, 138, 0.2)",
+                    },
+                  }}
                 >
-                  <MenuItem value="cliente">Cliente</MenuItem>
-                  <MenuItem value="asociado">Asociado</MenuItem>
-                  <MenuItem value="admin">Admin</MenuItem>
+                  <MenuItem value="cliente">{roleLabels.cliente}</MenuItem>
+                  <MenuItem value="asociado">{roleLabels.asociado}</MenuItem>
+                  <MenuItem value="admin">{roleLabels.admin}</MenuItem>
                 </Select>
               </FormControl>
-            </MDBox>
+            </div>
+
+            <div className="px-6 py-4 bg-surface-50 border-t border-surface-200 flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={loading}
+                disabled={loading || newRole === user.role}
+              >
+                <Person sx={{ fontSize: 18 }} />
+                Guardar rol
+              </Button>
+            </div>
           </DialogContent>
-          <DialogActions>
-            <MDButton onClick={onClose} color="secondary" disabled={loading}>
-              Cancelar
-            </MDButton>
-            <MDButton
-              type="submit"
-              variant="gradient"
-              color="info"
-              disabled={loading || newRole === user.role}
-            >
-              {loading ? <CircularProgress size={20} color="inherit" /> : "Guardar Rol"}
-            </MDButton>
-          </DialogActions>
         </form>
       )}
     </Dialog>
   );
 }
 
-// ... (propTypes y defaultProps no cambian)
 EditUserRoleModal.propTypes = {
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,

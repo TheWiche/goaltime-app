@@ -1,25 +1,37 @@
-import { MDButton, MDBox, MDTypography, MDInput } from "shared/components/md-shims";
-// src/layouts/canchas/components/AdminEditFieldModal/index.js
-
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import {
   Dialog,
-  DialogTitle,
   DialogContent,
-  DialogActions,
   Grid,
   CircularProgress,
-  Select,
-  MenuItem,
   FormControl,
   InputLabel,
-  Divider,
-  Card,
+  Select,
+  MenuItem,
+  TextField,
+  IconButton,
 } from "@mui/material";
+import {
+  Close,
+  Edit,
+  Person,
+  Email,
+  VpnKey,
+  SportsSoccer,
+  Save,
+} from "@mui/icons-material";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "shared/services/firebaseService";
-import Icon from "@mui/material/Icon";
+import { GlassCard } from "shared/components/ui";
+import { Button } from "shared/components/ui";
+
+const textFieldSx = {
+  "& .MuiOutlinedInput-root": {
+    borderRadius: "12px",
+    backgroundColor: "rgba(255,255,255,0.9)",
+  },
+};
 
 function AdminEditFieldModal({ open, onClose, onSubmit, loading, field }) {
   const [name, setName] = useState("");
@@ -33,7 +45,6 @@ function AdminEditFieldModal({ open, onClose, onSubmit, loading, field }) {
   const [ownerInfo, setOwnerInfo] = useState(null);
   const [loadingOwner, setLoadingOwner] = useState(false);
 
-  // Cargar datos del campo y del dueño cuando se abre el modal
   useEffect(() => {
     if (field && open) {
       setName(field.name || "");
@@ -45,7 +56,6 @@ function AdminEditFieldModal({ open, onClose, onSubmit, loading, field }) {
       setClosingTime(field.closingTime || "22:00");
       setStatus(field.status || "pending");
 
-      // Cargar información del dueño
       if (field.ownerId) {
         setLoadingOwner(true);
         getDoc(doc(db, "users", field.ownerId))
@@ -76,261 +86,252 @@ function AdminEditFieldModal({ open, onClose, onSubmit, loading, field }) {
         imageUrl: imageUrl || null,
         openingTime,
         closingTime,
-        status, // El admin puede cambiar el estado
+        status,
       });
     }
   };
 
-  const getStatusColor = (status) => {
-    if (status === "approved") return "success";
-    if (status === "pending") return "warning";
-    if (status === "rejected") return "error";
-    if (status === "disabled") return "secondary";
-    return "dark";
+  const statusLabels = {
+    pending: "Pendiente",
+    approved: "Aprobada",
+    rejected: "Rechazada",
+    disabled: "Deshabilitada",
   };
 
   if (!field) return null;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <MDBox
-        component={DialogTitle}
-        bgColor="info"
-        variant="gradient"
-        p={2}
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-      >
-        <MDTypography variant="h5" color="white" fontWeight="bold">
-          <Icon sx={{ verticalAlign: "middle", mr: 1 }}>edit</Icon>
-          Editar Cancha
-        </MDTypography>
-      </MDBox>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: "20px",
+          overflow: "hidden",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
+        },
+      }}
+    >
+      <div className="relative bg-gradient-to-br from-primary to-primary-600 px-6 pt-6 pb-6">
+        <IconButton
+          onClick={onClose}
+          size="small"
+          sx={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            color: "white",
+            bgcolor: "rgba(255,255,255,0.15)",
+            "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
+          }}
+        >
+          <Close fontSize="small" />
+        </IconButton>
+        <div className="flex items-center gap-3 pr-10">
+          <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
+            <Edit sx={{ color: "white", fontSize: 26 }} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold font-heading text-white">Editar cancha</h2>
+            <p className="text-sm text-white/80">Actualiza datos y estado de aprobación</p>
+          </div>
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit}>
-        <DialogContent sx={{ p: 3 }}>
-          <Grid container spacing={3}>
-            {/* Información del Dueño - Tarjeta Mejorada */}
-            <Grid item xs={12}>
-              <Card>
-                <MDBox p={2.5} borderRadius="lg" bgColor="info" variant="gradient" mb={2}>
-                  <MDTypography variant="h6" color="white" fontWeight="bold" mb={1}>
-                    <Icon sx={{ verticalAlign: "middle", mr: 1 }}>person</Icon>
-                    Información del Dueño
-                  </MDTypography>
-                </MDBox>
-                <MDBox p={2.5}>
-                  {loadingOwner ? (
-                    <MDBox display="flex" justifyContent="center" p={2}>
-                      <CircularProgress size={24} color="info" />
-                    </MDBox>
-                  ) : ownerInfo ? (
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6}>
-                        <MDBox display="flex" alignItems="center" mb={1.5}>
-                          <Icon color="action" sx={{ mr: 1 }}>
-                            badge
-                          </Icon>
-                          <MDBox>
-                            <MDTypography variant="caption" color="text" fontWeight="medium">
-                              Nombre
-                            </MDTypography>
-                            <MDTypography variant="body2" color="text" fontWeight="bold">
-                              {ownerInfo.name || "No disponible"}
-                            </MDTypography>
-                          </MDBox>
-                        </MDBox>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <MDBox display="flex" alignItems="center" mb={1.5}>
-                          <Icon color="action" sx={{ mr: 1 }}>
-                            email
-                          </Icon>
-                          <MDBox>
-                            <MDTypography variant="caption" color="text" fontWeight="medium">
-                              Correo
-                            </MDTypography>
-                            <MDTypography variant="body2" color="text" fontWeight="bold">
-                              {ownerInfo.email || "No disponible"}
-                            </MDTypography>
-                          </MDBox>
-                        </MDBox>
-                      </Grid>
-                      <Grid item xs={12}>
-                        <MDBox display="flex" alignItems="center">
-                          <Icon color="action" sx={{ mr: 1 }}>
-                            vpn_key
-                          </Icon>
-                          <MDBox>
-                            <MDTypography variant="caption" color="text" fontWeight="medium">
-                              ID de Usuario
-                            </MDTypography>
-                            <MDTypography
-                              variant="caption"
-                              color="text"
-                              sx={{ wordBreak: "break-all" }}
-                            >
-                              {field.ownerId}
-                            </MDTypography>
-                          </MDBox>
-                        </MDBox>
-                      </Grid>
-                    </Grid>
-                  ) : (
-                    <MDTypography variant="body2" color="text">
-                      No se pudo cargar la información del dueño
-                    </MDTypography>
-                  )}
-                </MDBox>
-              </Card>
-            </Grid>
+        <DialogContent sx={{ p: 0 }}>
+          <div className="px-6 py-5 space-y-5">
+            <GlassCard className="p-4" hover={false}>
+              <div className="flex items-center gap-2 mb-3">
+                <Person sx={{ color: "#1E3A8A", fontSize: 22 }} />
+                <h3 className="font-bold font-heading text-primary-900 text-sm">Información del dueño</h3>
+              </div>
+              {loadingOwner ? (
+                <div className="flex justify-center py-6">
+                  <CircularProgress size={28} sx={{ color: "#1E3A8A" }} />
+                </div>
+              ) : ownerInfo ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Person sx={{ fontSize: 18, color: "#1E3A8A" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-surface-500">Nombre</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {ownerInfo.name || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Email sx={{ fontSize: 18, color: "#1E3A8A" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-surface-500">Correo</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {ownerInfo.email || "—"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2 flex gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-surface-200 flex items-center justify-center shrink-0">
+                      <VpnKey sx={{ fontSize: 18, color: "#64748b" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-surface-500">ID de usuario</p>
+                      <p className="text-xs font-mono text-gray-700 break-all">{field.ownerId}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-surface-500">No se pudo cargar la información del dueño.</p>
+              )}
+            </GlassCard>
 
-            {/* Información de la Cancha */}
-            <Grid item xs={12}>
-              <MDTypography variant="h6" fontWeight="bold" mb={2}>
-                <Icon sx={{ verticalAlign: "middle", mr: 1 }}>stadium</Icon>
-                Información de la Cancha
-              </MDTypography>
-            </Grid>
+            <GlassCard className="p-4" hover={false}>
+              <div className="flex items-center gap-2 mb-4">
+                <SportsSoccer sx={{ color: "#1E3A8A", fontSize: 22 }} />
+                <h3 className="font-bold font-heading text-primary-900 text-sm">Información de la cancha</h3>
+              </div>
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <TextField
+                    label="Nombre de la cancha"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    fullWidth
+                    size="small"
+                    sx={textFieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label="Dirección"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    required
+                    fullWidth
+                    size="small"
+                    sx={textFieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label="Descripción"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    fullWidth
+                    multiline
+                    minRows={3}
+                    size="small"
+                    sx={textFieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Precio por hora ($)"
+                    type="number"
+                    value={pricePerHour}
+                    onChange={(e) => setPricePerHour(e.target.value)}
+                    required
+                    fullWidth
+                    size="small"
+                    inputProps={{ min: 0, step: 0.01 }}
+                    sx={textFieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    label="Apertura"
+                    type="time"
+                    value={openingTime}
+                    onChange={(e) => setOpeningTime(e.target.value)}
+                    required
+                    fullWidth
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    sx={textFieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={3}>
+                  <TextField
+                    label="Cierre"
+                    type="time"
+                    value={closingTime}
+                    onChange={(e) => setClosingTime(e.target.value)}
+                    required
+                    fullWidth
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    sx={textFieldSx}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    label="URL de imagen (opcional)"
+                    type="url"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    fullWidth
+                    size="small"
+                    helperText="Enlace a una foto de la cancha"
+                    sx={textFieldSx}
+                  />
+                </Grid>
+              </Grid>
+            </GlassCard>
 
-            <Grid item xs={12}>
-              <MDInput
-                autoFocus
-                label="Nombre de la Cancha"
-                type="text"
-                fullWidth
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <MDInput
-                label="Dirección"
-                type="text"
-                fullWidth
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                required
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <MDInput
-                label="Descripción"
-                type="text"
-                fullWidth
-                multiline
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <MDInput
-                label="Precio por Hora ($)"
-                type="number"
-                fullWidth
-                value={pricePerHour}
-                onChange={(e) => setPricePerHour(e.target.value)}
-                required
-                inputProps={{ min: 0, step: 0.01 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <MDInput
-                label="Hora de Apertura"
-                type="time"
-                fullWidth
-                value={openingTime}
-                onChange={(e) => setOpeningTime(e.target.value)}
-                required
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={3}>
-              <MDInput
-                label="Hora de Cierre"
-                type="time"
-                fullWidth
-                value={closingTime}
-                onChange={(e) => setClosingTime(e.target.value)}
-                required
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <MDInput
-                label="URL de la Imagen (opcional)"
-                type="url"
-                fullWidth
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                helperText="Pega la URL de una imagen de la cancha"
-              />
-            </Grid>
+            <GlassCard className="p-4" hover={false}>
+              <h3 className="font-bold font-heading text-primary-900 text-sm mb-3">Estado de la cancha</h3>
+              <Grid container spacing={2} alignItems="stretch">
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small" variant="outlined">
+                    <InputLabel id="status-edit-label">Estado</InputLabel>
+                    <Select
+                      labelId="status-edit-label"
+                      label="Estado"
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                      sx={{
+                        borderRadius: "12px",
+                        "& .MuiOutlinedInput-notchedOutline": {
+                          borderColor: "rgba(30, 58, 138, 0.2)",
+                        },
+                      }}
+                    >
+                      <MenuItem value="pending">Pendiente</MenuItem>
+                      <MenuItem value="approved">Aprobada</MenuItem>
+                      <MenuItem value="rejected">Rechazada</MenuItem>
+                      <MenuItem value="disabled">Deshabilitada</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <div className="h-full min-h-[40px] flex items-center rounded-xl border border-primary/15 bg-primary/5 px-4 py-2">
+                    <p className="text-sm font-semibold text-primary-900">
+                      Vista previa:{" "}
+                      <span className="text-primary">{statusLabels[status] || status}</span>
+                    </p>
+                  </div>
+                </Grid>
+              </Grid>
+            </GlassCard>
+          </div>
 
-            {/* Sección de Estado */}
-            <Grid item xs={12}>
-              <Divider sx={{ my: 3 }} />
-              <MDTypography variant="h6" fontWeight="bold" mb={2}>
-                <Icon sx={{ verticalAlign: "middle", mr: 1 }}>settings</Icon>
-                Estado de la Cancha
-              </MDTypography>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl variant="outlined" fullWidth>
-                <InputLabel id="status-select-label">Estado</InputLabel>
-                <Select
-                  labelId="status-select-label"
-                  id="status"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  label="Estado"
-                >
-                  <MenuItem value="pending">Pendiente</MenuItem>
-                  <MenuItem value="approved">Aprobada</MenuItem>
-                  <MenuItem value="rejected">Rechazada</MenuItem>
-                  <MenuItem value="disabled">Deshabilitada</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <MDBox
-                p={2}
-                borderRadius="lg"
-                bgColor={getStatusColor(status)}
-                variant="gradient"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                height="100%"
-              >
-                <MDTypography variant="button" color="white" fontWeight="bold">
-                  <Icon sx={{ verticalAlign: "middle", mr: 1 }}>info</Icon>
-                  Estado: {status.toUpperCase()}
-                </MDTypography>
-              </MDBox>
-            </Grid>
-          </Grid>
+          <div className="px-6 py-4 bg-surface-50 border-t border-surface-200 flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
+              Cancelar
+            </Button>
+            <Button type="submit" variant="primary" loading={loading} disabled={loading}>
+              <Save sx={{ fontSize: 18 }} />
+              Guardar cambios
+            </Button>
+          </div>
         </DialogContent>
-        <DialogActions sx={{ p: 3, pt: 2 }}>
-          <MDButton onClick={onClose} color="secondary" disabled={loading} variant="outlined">
-            Cancelar
-          </MDButton>
-          <MDButton type="submit" variant="gradient" color="info" disabled={loading}>
-            {loading ? (
-              <>
-                <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <Icon sx={{ mr: 1 }}>save</Icon>
-                Guardar Cambios
-              </>
-            )}
-          </MDButton>
-        </DialogActions>
       </form>
     </Dialog>
   );

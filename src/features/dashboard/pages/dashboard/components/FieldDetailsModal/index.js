@@ -117,24 +117,6 @@ function FieldDetailsModal({ open, onClose, field }) {
             </div>
           )}
 
-          {/* Estado Card */}
-          <div className="mb-6">
-            <div
-              className="p-5 rounded-2xl flex items-center justify-between"
-              style={{ backgroundColor: statusConfig.bgColor }}
-            >
-              <div>
-                <p className="text-sm font-medium mb-1" style={{ color: statusConfig.color }}>
-                  Estado Actual
-                </p>
-                <p className="text-2xl font-bold font-heading" style={{ color: statusConfig.color }}>
-                  {statusConfig.label}
-                </p>
-              </div>
-              <StatusIcon sx={{ fontSize: 48, color: statusConfig.color, opacity: 0.7 }} />
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {/* Información General */}
             <GlassCard className="p-5" hover={false}>

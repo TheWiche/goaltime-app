@@ -173,7 +173,7 @@ function AdminUsers() {
       <EditUserRoleModal
         open={isEditModalOpen}
         onClose={handleCloseEditModal}
-        onSave={handleSaveRole}
+        onSubmit={handleSaveRole}
         loading={loadingAction}
         user={userToEdit}
       />
