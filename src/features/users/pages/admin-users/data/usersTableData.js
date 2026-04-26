@@ -7,8 +7,8 @@ import { collection, onSnapshot, query, where, orderBy } from "firebase/firestor
 import { db } from "shared/services/firebaseService";
 import useDebounce from "shared/hooks/useDebounce";
 
-import Chip from "@mui/material/Chip";
-import Icon from "@mui/material/Icon";
+import { Pencil, CircleCheck, Ban } from "lucide-react";
+import { StatusPill } from "shared/components/ui";
 
 // 👇 CORRECCIÓN: Se añaden onEditRole y onToggleDisable a los parámetros
 export default function useUsersTableData(searchTerm, roleFilter, onEditRole, onToggleDisable) {
@@ -141,7 +141,7 @@ export default function useUsersTableData(searchTerm, roleFilter, onEditRole, on
 
   const User = ({ name, email, photoURL }) => (
     <MDBox display="flex" alignItems="center" lineHeight={1}>
-      <MDAvatar src={photoURL || ""} name={name || "?"} size="sm" />
+      <MDAvatar src={photoURL || ""} alt={name || "Usuario"} size="sm" />
       <MDBox ml={2} lineHeight={1}>
         <MDTypography display="block" variant="button" fontWeight="medium">
           {name || "Nombre no disponible"}
@@ -152,13 +152,13 @@ export default function useUsersTableData(searchTerm, roleFilter, onEditRole, on
   );
 
   const rows = users.map((user) => {
-    let roleColor = "secondary"; // Valor por defecto
-    if (user.role === "admin") roleColor = "info";
-    else if (user.role === "asociado") roleColor = "primary";
+    let roleTone = "neutral";
+    if (user.role === "admin") roleTone = "info";
+    else if (user.role === "asociado") roleTone = "cta";
 
     const isDisabled = user.status === "disabled";
     const statusText = isDisabled ? "Deshabilitado" : "Activo";
-    const statusColor = isDisabled ? "secondary" : "success";
+    const statusTone = isDisabled ? "neutral" : "success";
 
     const getRoleText = (role) => {
       const roleMap = {
@@ -172,19 +172,18 @@ export default function useUsersTableData(searchTerm, roleFilter, onEditRole, on
     return {
       usuario: <User name={user.name} email={user.email} photoURL={user.photoURL} />,
       rol: (
-        <MDBox ml={-1}>
-          <Chip
-            label={getRoleText(user.role)}
-            color={roleColor}
-            size="small"
-            sx={{ fontWeight: "bold" }}
-          />
-        </MDBox>
+        <div className="-ml-1 flex justify-center">
+          <StatusPill tone={roleTone} size="sm" className="font-bold">
+            {getRoleText(user.role)}
+          </StatusPill>
+        </div>
       ),
       estado: (
-        <MDBox ml={-1}>
-          <Chip label={statusText} color={statusColor} size="small" sx={{ fontWeight: "bold" }} />
-        </MDBox>
+        <div className="-ml-1 flex justify-center">
+          <StatusPill tone={statusTone} size="sm" className="font-bold">
+            {statusText}
+          </StatusPill>
+        </div>
       ),
       fecha_creacion: (
         <MDTypography variant="caption" color="text" fontWeight="medium">
@@ -194,34 +193,36 @@ export default function useUsersTableData(searchTerm, roleFilter, onEditRole, on
         </MDTypography>
       ),
       acciones: (
-        <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+        <div className="flex flex-wrap justify-center gap-2">
           <MDButton
             variant="outlined"
             color="info"
             size="small"
+            className="inline-flex items-center gap-1.5"
             onClick={() => {
               if (onEditRole) onEditRole(user);
             }}
           >
-            <Icon fontSize="small" sx={{ mr: 0.5 }}>
-              edit
-            </Icon>
+            <Pencil className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
             Editar Rol
           </MDButton>
           <MDButton
             variant="outlined"
             color={isDisabled ? "success" : "error"}
             size="small"
+            className="inline-flex items-center gap-1.5"
             onClick={() => {
               if (onToggleDisable) onToggleDisable(user);
             }}
           >
-            <Icon fontSize="small" sx={{ mr: 0.5 }}>
-              {isDisabled ? "check_circle" : "cancel"}
-            </Icon>
+            {isDisabled ? (
+              <CircleCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+            ) : (
+              <Ban className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+            )}
             {isDisabled ? "Habilitar" : "Deshabilitar"}
           </MDButton>
-        </MDBox>
+        </div>
       ),
     };
   });

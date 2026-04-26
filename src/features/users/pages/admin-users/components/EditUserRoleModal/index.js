@@ -1,151 +1,171 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import {
-  Dialog,
-  DialogContent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Avatar,
-  IconButton,
-} from "@mui/material";
-import { Close, AdminPanelSettings, Person } from "@mui/icons-material";
-import { GlassCard } from "shared/components/ui";
-import { Button } from "shared/components/ui";
+import { Shield, User, Briefcase, Save } from "lucide-react";
+import { Modal, Button, SectionCard, StatusPill } from "shared/components/ui";
+
+const ROLE_OPTIONS = [
+  {
+    value: "cliente",
+    label: "Cliente",
+    description: "Puede reservar canchas y ver sus reservas.",
+    Icon: User,
+    tone: "info",
+  },
+  {
+    value: "asociado",
+    label: "Asociado",
+    description: "Gestiona sus canchas, horarios y reservas.",
+    Icon: Briefcase,
+    tone: "warning",
+  },
+  {
+    value: "admin",
+    label: "Administrador",
+    description: "Control total: usuarios, canchas, moderación.",
+    Icon: Shield,
+    tone: "danger",
+  },
+];
 
 function EditUserRoleModal({ open, onClose, onSubmit, loading, user }) {
-  const [newRole, setNewRole] = useState("");
+  const [newRole, setNewRole] = useState("cliente");
 
   useEffect(() => {
-    if (user) {
+    if (user && open) {
       setNewRole(user.role || "cliente");
-    } else {
-      setNewRole("cliente");
     }
   }, [user, open]);
 
+  if (!user) return null;
+
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!loading && user) {
-      onSubmit(user, newRole);
-    }
+    if (!loading) onSubmit(user, newRole);
   };
 
-  const roleLabels = {
-    cliente: "Cliente",
-    asociado: "Asociado",
-    admin: "Administrador",
-  };
+  const isUnchanged = newRole === user.role;
 
   return (
-    <Dialog
+    <Modal
       open={open}
       onClose={onClose}
-      maxWidth="sm"
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: "20px",
-          overflow: "hidden",
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
-        },
-      }}
+      size="lg"
+      eyebrow="Administración · Usuarios"
+      title="Editar rol del usuario"
+      subtitle="Asigna los permisos del usuario en GoalTime. El cambio aplica inmediatamente al guardar."
+      icon={<Shield className="h-[22px] w-[22px] shrink-0" strokeWidth={2} aria-hidden />}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            form="edit-role-form"
+            variant="primary"
+            loading={loading}
+            disabled={loading || isUnchanged}
+          >
+            <Save className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+            Guardar rol
+          </Button>
+        </>
+      }
     >
-      <div className="relative bg-gradient-to-br from-primary to-primary-600 px-6 pt-6 pb-8">
-        <IconButton
-          onClick={onClose}
-          size="small"
-          sx={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            color: "white",
-            bgcolor: "rgba(255,255,255,0.15)",
-            "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
-          }}
+      <form id="edit-role-form" onSubmit={handleSubmit} className="space-y-6">
+        <SectionCard
+          eyebrow="Cuenta"
+          title="Datos del usuario"
+          padding="p-5"
+          className="bg-slate-50/60"
         >
-          <Close fontSize="small" />
-        </IconButton>
-        <div className="flex items-center gap-3 pr-10">
-          <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
-            <AdminPanelSettings sx={{ color: "white", fontSize: 26 }} />
+          <div className="flex items-center gap-4">
+            {user.photoURL ? (
+              <img
+                src={user.photoURL}
+                alt={user.name || "Usuario"}
+                className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
+              />
+            ) : (
+              <span
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white shadow-sm"
+                style={{ background: "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)" }}
+              >
+                {user.name ? user.name[0].toUpperCase() : "?"}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-semibold font-heading text-slate-900 truncate">
+                {user.name || "Usuario"}
+              </p>
+              <p className="text-sm text-slate-500 truncate">{user.email || "Sin correo"}</p>
+              <div className="mt-2">
+                <StatusPill tone="neutral" size="sm" dot>
+                  Rol actual: {user.role || "cliente"}
+                </StatusPill>
+              </div>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl font-bold font-heading text-white">Editar rol de usuario</h2>
-            <p className="text-sm text-white/80">Asigna permisos en GoalTime</p>
+        </SectionCard>
+
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-3">
+            Selecciona un rol
+          </p>
+          <div className="grid grid-cols-1 gap-3">
+            {ROLE_OPTIONS.map((opt) => {
+              const active = newRole === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setNewRole(opt.value)}
+                  disabled={loading}
+                  className={[
+                    "group flex items-start gap-4 text-left rounded-xl border px-4 py-4 transition-all duration-200 cursor-pointer",
+                    "focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
+                    active
+                      ? "border-primary bg-primary-50/60 shadow-sm"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+                  ].join(" ")}
+                >
+                  <span
+                    className={[
+                      "shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
+                      active
+                        ? "bg-primary text-white"
+                        : "bg-slate-100 text-slate-500 group-hover:bg-slate-200",
+                    ].join(" ")}
+                  >
+                    <opt.Icon className="h-5 w-5" strokeWidth={2} aria-hidden />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold font-heading text-slate-900">
+                        {opt.label}
+                      </span>
+                      {active && (
+                        <StatusPill tone="info" size="sm">
+                          Seleccionado
+                        </StatusPill>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500 leading-relaxed">{opt.description}</p>
+                  </div>
+                  <span
+                    aria-hidden="true"
+                    className={[
+                      "mt-1 w-4 h-4 rounded-full border-2 transition-colors",
+                      active ? "border-primary bg-primary" : "border-slate-300 bg-white",
+                    ].join(" ")}
+                  />
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
-
-      {user && (
-        <form onSubmit={handleSubmit}>
-          <DialogContent sx={{ p: 0 }}>
-            <div className="px-6 py-5 -mt-4">
-              <GlassCard className="p-4 mb-5" hover={false}>
-                <div className="flex items-center gap-4">
-                  <Avatar
-                    src={user.photoURL || ""}
-                    alt={user.name || ""}
-                    sx={{
-                      width: 56,
-                      height: 56,
-                      fontWeight: 700,
-                      background: "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)",
-                    }}
-                  >
-                    {user.name ? user.name[0].toUpperCase() : "?"}
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold font-heading text-primary-900 truncate text-base">
-                      {user.name || "Usuario"}
-                    </p>
-                    <p className="text-sm text-surface-500 truncate">{user.email || "Sin correo"}</p>
-                  </div>
-                </div>
-              </GlassCard>
-
-              <FormControl fullWidth size="small" variant="outlined">
-                <InputLabel id="edit-role-label">Nuevo rol</InputLabel>
-                <Select
-                  labelId="edit-role-label"
-                  id="newRole"
-                  label="Nuevo rol"
-                  value={newRole}
-                  onChange={(e) => setNewRole(e.target.value)}
-                  disabled={loading}
-                  sx={{
-                    borderRadius: "12px",
-                    "& .MuiOutlinedInput-notchedOutline": {
-                      borderColor: "rgba(30, 58, 138, 0.2)",
-                    },
-                  }}
-                >
-                  <MenuItem value="cliente">{roleLabels.cliente}</MenuItem>
-                  <MenuItem value="asociado">{roleLabels.asociado}</MenuItem>
-                  <MenuItem value="admin">{roleLabels.admin}</MenuItem>
-                </Select>
-              </FormControl>
-            </div>
-
-            <div className="px-6 py-4 bg-surface-50 border-t border-surface-200 flex justify-end gap-3">
-              <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                loading={loading}
-                disabled={loading || newRole === user.role}
-              >
-                <Person sx={{ fontSize: 18 }} />
-                Guardar rol
-              </Button>
-            </div>
-          </DialogContent>
-        </form>
-      )}
-    </Dialog>
+      </form>
+    </Modal>
   );
 }
 

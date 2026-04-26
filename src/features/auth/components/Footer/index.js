@@ -1,105 +1,55 @@
-import { MDBox, MDTypography } from "shared/components/md-shims";
-// src/layouts/authentication/components/Footer/index.js
-
+import { MDTypography } from "shared/components/md-shims";
 import PropTypes from "prop-types";
-import { Link as RouterLink } from "react-router-dom"; // Se importa para enlaces internos
-
-// @mui material components
-import Container from "@mui/material/Container";
-import Link from "@mui/material/Link";
-import Icon from "@mui/material/Icon";
-
-// GoalTime App components
-
-// GoalTime App base styles
-import typography from "assets/theme/base/typography";
+import { Link as RouterLink } from "react-router-dom";
 
 function Footer({ light }) {
-  const { size } = typography;
+  const textMuted = light ? "text-white/90" : "text-slate-600";
+  const linkClass = light
+    ? "text-white hover:text-white/80 no-underline"
+    : "text-slate-800 hover:text-primary no-underline";
 
   return (
-    <MDBox width="100%" bottom={0} py={4}>
-      <Container>
-        <MDBox
-          width="100%"
-          display="flex"
-          flexDirection={{ xs: "column", lg: "row" }}
-          justifyContent="space-between"
-          alignItems="center"
-          px={1.5}
-        >
-          {/* 👇 SECCIÓN DE COPYRIGHT ACTUALIZADA */}
-          <MDBox
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            flexWrap="wrap"
-            color={light ? "white" : "text"}
-            fontSize={size.sm}
+    <footer className="w-full py-8">
+      <div className="mx-auto max-w-6xl px-4">
+        <div className="flex flex-col items-center justify-between gap-6 px-2 lg:flex-row lg:gap-4">
+          <div
+            className={`flex flex-wrap items-center justify-center gap-x-1 text-center text-sm ${textMuted}`}
           >
             &copy; {new Date().getFullYear()}
-            <Link href="home" target="_blank">
-              <MDTypography variant="button" fontWeight="medium">
+            <RouterLink to="/" className={linkClass}>
+              <MDTypography variant="button" className="font-medium">
                 &nbsp;GoalTime&nbsp;
               </MDTypography>
-            </Link>
+            </RouterLink>
             . Todos los derechos reservados.
-          </MDBox>
+          </div>
 
-          {/* 👇 SECCIÓN DE ENLACES ACTUALIZADA */}
-          <MDBox
-            component="ul"
-            sx={({ breakpoints }) => ({
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "center",
-              listStyle: "none",
-              mt: 3,
-              mb: 0,
-              p: 0,
-              [breakpoints.up("lg")]: {
-                mt: 0,
-              },
-            })}
-          >
-            <MDBox component="li" px={2} lineHeight={1}>
-              <Link component={RouterLink} to="/sobre-nosotros">
-                <MDTypography
-                  variant="button"
-                  fontWeight="regular"
-                  color={light ? "white" : "dark"}
-                >
+          <ul className="m-0 flex list-none flex-wrap items-center justify-center gap-x-0 p-0 lg:mt-0">
+            <li className="px-4 leading-none">
+              <RouterLink to="/sobre-nosotros" className={linkClass}>
+                <MDTypography variant="button" className="font-normal">
                   Sobre Nosotros
                 </MDTypography>
-              </Link>
-            </MDBox>
-            <MDBox component="li" px={2} lineHeight={1}>
-              <Link component={RouterLink} to="/blog">
-                <MDTypography
-                  variant="button"
-                  fontWeight="regular"
-                  color={light ? "white" : "dark"}
-                >
+              </RouterLink>
+            </li>
+            <li className="px-4 leading-none">
+              <RouterLink to="/blog" className={linkClass}>
+                <MDTypography variant="button" className="font-normal">
                   Blog
                 </MDTypography>
-              </Link>
-            </MDBox>
-            <MDBox component="li" pl={2} lineHeight={1}>
-              <Link component={RouterLink} to="/licencia">
-                <MDTypography
-                  variant="button"
-                  fontWeight="regular"
-                  color={light ? "white" : "dark"}
-                >
+              </RouterLink>
+            </li>
+            <li className="pl-4 leading-none">
+              <RouterLink to="/licencia" className={linkClass}>
+                <MDTypography variant="button" className="font-normal">
                   Licencia
                 </MDTypography>
-              </Link>
-            </MDBox>
-          </MDBox>
-        </MDBox>
-      </Container>
-    </MDBox>
+              </RouterLink>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </footer>
   );
 }
 

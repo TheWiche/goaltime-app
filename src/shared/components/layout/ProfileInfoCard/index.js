@@ -1,9 +1,6 @@
 import { Link } from "react-router-dom";
 import PropTypes from "prop-types";
-import Card from "@mui/material/Card";
-import Divider from "@mui/material/Divider";
-import Tooltip from "@mui/material/Tooltip";
-import Icon from "@mui/material/Icon";
+import { Pencil } from "lucide-react";
 import { MDBox, MDTypography } from "shared/components/md-shims";
 
 function ProfileInfoCard({ title, description, info, social, action, shadow }) {
@@ -54,16 +51,24 @@ function ProfileInfoCard({ title, description, info, social, action, shadow }) {
       : null;
 
   return (
-    <Card sx={{ height: "100%", boxShadow: !shadow && "none" }}>
+    <div
+      className={[
+        "h-full overflow-hidden rounded-xl border border-slate-200/80 bg-white",
+        shadow ? "shadow-sm" : "shadow-none",
+      ].join(" ")}
+    >
       <MDBox display="flex" justifyContent="space-between" alignItems="center" pt={2} px={2}>
         <MDTypography variant="h6" fontWeight="medium" textTransform="capitalize">
           {title}
         </MDTypography>
-        <MDTypography component={Link} to={action.route} variant="body2" color="secondary">
-          <Tooltip title={action.tooltip} placement="top">
-            <Icon>edit</Icon>
-          </Tooltip>
-        </MDTypography>
+        <Link
+          to={action.route}
+          title={action.tooltip}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary"
+        >
+          <Pencil className="h-5 w-5" strokeWidth={2} aria-hidden />
+          <span className="sr-only">{action.tooltip}</span>
+        </Link>
       </MDBox>
       <MDBox p={2}>
         <MDBox mb={2} lineHeight={1}>
@@ -71,9 +76,9 @@ function ProfileInfoCard({ title, description, info, social, action, shadow }) {
             {description}
           </MDTypography>
         </MDBox>
-        <MDBox opacity={0.3}>
-          <Divider />
-        </MDBox>
+        <div className="opacity-30">
+          <hr className="border-slate-200" />
+        </div>
         <MDBox>
           {renderItems}
           {social && social.length > 0 && (
@@ -86,7 +91,7 @@ function ProfileInfoCard({ title, description, info, social, action, shadow }) {
           )}
         </MDBox>
       </MDBox>
-    </Card>
+    </div>
   );
 }
 

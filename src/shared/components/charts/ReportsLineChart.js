@@ -12,9 +12,7 @@ import {
   Legend,
   Filler,
 } from "chart.js";
-import Card from "@mui/material/Card";
-import Divider from "@mui/material/Divider";
-import Icon from "@mui/material/Icon";
+import { Clock } from "lucide-react";
 import { MDBox, MDTypography } from "shared/components/md-shims";
 
 ChartJS.register(
@@ -82,15 +80,13 @@ function ReportsLineChart({ color, title, description, date, chart }) {
         <MDTypography component="div" variant="button" color="text" fontWeight="light" mb={1}>
           {description}
         </MDTypography>
-        <Divider sx={{ my: 1 }} />
-        <MDBox display="flex" alignItems="center">
-          <MDTypography variant="button" color="text" lineHeight={1} sx={{ mt: 0.15, mr: 0.5 }}>
-            <Icon>schedule</Icon>
-          </MDTypography>
+        <hr className="my-2 border-slate-200" />
+        <div className="flex items-center gap-1.5">
+          <Clock className="h-4 w-4 shrink-0 text-slate-500" strokeWidth={2} aria-hidden />
           <MDTypography variant="button" color="text" fontWeight="light">
             {date}
           </MDTypography>
-        </MDBox>
+        </div>
       </MDBox>
     </MDBox>
   );

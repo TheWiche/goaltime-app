@@ -1,27 +1,20 @@
 import PropTypes from "prop-types";
-import { MDBox } from "shared/components/md-shims";
 
-function DataTableBodyCell({ noBorder, align, children }) {
+const alignClass = (align) =>
+  align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+
+function DataTableBodyCell({ noBorder, align, children, ...cellProps }) {
   return (
-    <MDBox
-      component="td"
-      textAlign={align}
-      py={1.5}
-      px={3}
-      sx={({ palette: { light }, typography: { size }, borders: { borderWidth } }) => ({
-        fontSize: size.sm,
-        borderBottom: noBorder ? "none" : `${borderWidth[1]} solid ${light.main}`,
-      })}
+    <td
+      {...cellProps}
+      className={[
+        "py-3 px-3 text-sm text-slate-800 align-middle",
+        alignClass(align),
+        noBorder ? "border-b-0" : "border-b border-slate-200",
+      ].join(" ")}
     >
-      <MDBox
-        display="inline-block"
-        width="max-content"
-        color="text"
-        sx={{ verticalAlign: "middle" }}
-      >
-        {children}
-      </MDBox>
-    </MDBox>
+      <span className="inline-block max-w-max align-middle">{children}</span>
+    </td>
   );
 }
 

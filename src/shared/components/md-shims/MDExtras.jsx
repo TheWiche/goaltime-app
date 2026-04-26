@@ -43,8 +43,24 @@ MDBadge.propTypes = {
   size: PropTypes.string,
 };
 
-export function MDAvatar({ src, alt, size = "md" }) {
-  return <img src={src} alt={alt} className="w-10 h-10 rounded-full object-cover" />;
+const avatarSizes = {
+  xs: "h-6 w-6",
+  sm: "h-8 w-8",
+  md: "w-10 h-10",
+  xl: "h-20 w-20",
+};
+
+export function MDAvatar({ src, alt, size = "md", className = "", shadow, ...rest }) {
+  const sizeClass = avatarSizes[size] || avatarSizes.md;
+  const shadowClass = shadow ? " shadow-sm" : "";
+  return (
+    <img
+      src={src}
+      alt={alt || ""}
+      className={`rounded-full object-cover ${sizeClass}${shadowClass} ${className}`.trim()}
+      {...rest}
+    />
+  );
 }
 
 MDAvatar.propTypes = {

@@ -1,77 +1,39 @@
-import { MDBox, MDTypography } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-
-* Product Page: https://www.goaltime.site/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
-//src/layouts/authentication/components/BasicLayout/index.jss
-
-// prop-types is a library for typechecking of props
 import PropTypes from "prop-types";
-
-// @mui material components
-import Grid from "@mui/material/Grid";
-
-// GoalTime App components
-// 
-// GoalTime App example components
 import PageLayout from "shared/components/layout/LayoutContainers/PageLayout";
-
-// Authentication layout components
 import Footer from "features/auth/components/Footer";
 
 function CoverLayout({ coverHeight, image, children }) {
   return (
     <PageLayout>
-      {/* Navbar intentionally removed for authentication pages (Sign In / Sign Up) */}
-      <MDBox
-        width="calc(100% - 2rem)"
-        minHeight={coverHeight}
-        borderRadius="xl"
-        mx={2}
-        my={2}
-        pt={6}
-        pb={28}
-        sx={{
-          backgroundImage: ({ functions: { linearGradient, rgba }, palette: { gradients } }) =>
-            image &&
-            `${linearGradient(
-              rgba(gradients.dark.main, 0.4),
-              rgba(gradients.dark.state, 0.4)
-            )}, url(${image})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
+      <div
+        className="mx-4 my-4 rounded-2xl bg-cover bg-center bg-no-repeat pt-12 pb-28"
+        style={{
+          width: "calc(100% - 2rem)",
+          minHeight: coverHeight,
+          backgroundImage: image
+            ? `linear-gradient(rgba(15, 23, 42, 0.45), rgba(15, 23, 42, 0.45)), url(${image})`
+            : undefined,
         }}
       />
-      <MDBox mt={{ xs: -20, lg: -18 }} px={1} width="calc(100% - 2rem)" mx="auto">
-        <Grid container spacing={1} justifyContent="center">
-          <Grid item xs={11} sm={9} md={5} lg={4} xl={3}>
+      <div
+        className="mx-auto w-[calc(100%-2rem)] px-2"
+        style={{ marginTop: "clamp(-5rem, -12vw, -4rem)" }}
+      >
+        <div className="flex justify-center">
+          <div className="w-[92%] max-w-sm sm:max-w-md md:max-w-lg lg:max-w-md xl:max-w-sm">
             {children}
-          </Grid>
-        </Grid>
-      </MDBox>
+          </div>
+        </div>
+      </div>
       <Footer />
     </PageLayout>
   );
 }
 
-// Setting default props for the CoverLayout
 CoverLayout.defaultProps = {
   coverHeight: "35vh",
 };
 
-// Typechecking props for the CoverLayout
 CoverLayout.propTypes = {
   coverHeight: PropTypes.string,
   image: PropTypes.string.isRequired,

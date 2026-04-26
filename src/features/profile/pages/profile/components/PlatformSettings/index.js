@@ -1,26 +1,28 @@
 import { MDBox, MDTypography } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-
-* Product Page: https://www.goaltime.site/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
 import { useState } from "react";
 
-// @mui material components
-import Card from "@mui/material/Card";
-import Switch from "@mui/material/Switch";
-
-// GoalTime App components
+function Toggle({ checked, onChange, id }) {
+  return (
+    <button
+      type="button"
+      id={id}
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={[
+        "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+        checked ? "bg-primary" : "bg-slate-300",
+      ].join(" ")}
+    >
+      <span
+        className={[
+          "absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ease-out",
+          checked ? "translate-x-5" : "translate-x-0",
+        ].join(" ")}
+      />
+    </button>
+  );
+}
 
 function PlatformSettings() {
   const [followsMe, setFollowsMe] = useState(true);
@@ -31,7 +33,7 @@ function PlatformSettings() {
   const [newsletter, setNewsletter] = useState(false);
 
   return (
-    <Card sx={{ boxShadow: "none" }}>
+    <div className="rounded-xl border border-slate-200/80 bg-white shadow-none">
       <MDBox p={2}>
         <MDTypography variant="h6" fontWeight="medium" textTransform="capitalize">
           configuración de la plataforma
@@ -43,7 +45,7 @@ function PlatformSettings() {
         </MDTypography>
         <MDBox display="flex" alignItems="center" mb={0.5} ml={-1.5}>
           <MDBox mt={0.5}>
-            <Switch checked={followsMe} onChange={() => setFollowsMe(!followsMe)} />
+            <Toggle id="toggle-follow" checked={followsMe} onChange={setFollowsMe} />
           </MDBox>
           <MDBox width="80%" ml={0.5}>
             <MDTypography variant="button" fontWeight="regular" color="text">
@@ -53,7 +55,7 @@ function PlatformSettings() {
         </MDBox>
         <MDBox display="flex" alignItems="center" mb={0.5} ml={-1.5}>
           <MDBox mt={0.5}>
-            <Switch checked={answersPost} onChange={() => setAnswersPost(!answersPost)} />
+            <Toggle id="toggle-answers" checked={answersPost} onChange={setAnswersPost} />
           </MDBox>
           <MDBox width="80%" ml={0.5}>
             <MDTypography variant="button" fontWeight="regular" color="text">
@@ -63,7 +65,7 @@ function PlatformSettings() {
         </MDBox>
         <MDBox display="flex" alignItems="center" mb={0.5} ml={-1.5}>
           <MDBox mt={0.5}>
-            <Switch checked={mentionsMe} onChange={() => setMentionsMe(!mentionsMe)} />
+            <Toggle id="toggle-mentions" checked={mentionsMe} onChange={setMentionsMe} />
           </MDBox>
           <MDBox width="80%" ml={0.5}>
             <MDTypography variant="button" fontWeight="regular" color="text">
@@ -78,7 +80,7 @@ function PlatformSettings() {
         </MDBox>
         <MDBox display="flex" alignItems="center" mb={0.5} ml={-1.5}>
           <MDBox mt={0.5}>
-            <Switch checked={newLaunches} onChange={() => setNewLaunches(!newLaunches)} />
+            <Toggle id="toggle-launches" checked={newLaunches} onChange={setNewLaunches} />
           </MDBox>
           <MDBox width="80%" ml={0.5}>
             <MDTypography variant="button" fontWeight="regular" color="text">
@@ -88,7 +90,7 @@ function PlatformSettings() {
         </MDBox>
         <MDBox display="flex" alignItems="center" mb={0.5} ml={-1.5}>
           <MDBox mt={0.5}>
-            <Switch checked={productUpdate} onChange={() => setProductUpdate(!productUpdate)} />
+            <Toggle id="toggle-product" checked={productUpdate} onChange={setProductUpdate} />
           </MDBox>
           <MDBox width="80%" ml={0.5}>
             <MDTypography variant="button" fontWeight="regular" color="text">
@@ -98,7 +100,7 @@ function PlatformSettings() {
         </MDBox>
         <MDBox display="flex" alignItems="center" mb={0.5} ml={-1.5}>
           <MDBox mt={0.5}>
-            <Switch checked={newsletter} onChange={() => setNewsletter(!newsletter)} />
+            <Toggle id="toggle-newsletter" checked={newsletter} onChange={setNewsletter} />
           </MDBox>
           <MDBox width="80%" ml={0.5}>
             <MDTypography variant="button" fontWeight="regular" color="text">
@@ -107,7 +109,7 @@ function PlatformSettings() {
           </MDBox>
         </MDBox>
       </MDBox>
-    </Card>
+    </div>
   );
 }
 

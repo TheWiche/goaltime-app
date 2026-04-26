@@ -1,31 +1,19 @@
 import { MDBox, MDTypography } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-
-* Product Page: https://www.goaltime.site/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
-// prop-types is a library for typechecking of props
 import PropTypes from "prop-types";
-
-// react-router-dom components
 import { Link } from "react-router-dom";
+import { LayoutDashboard, User, UserCircle, KeyRound } from "lucide-react";
 
-// @mui material components
-import Icon from "@mui/material/Icon";
-
-// GoalTime App components
+const NAV_ICONS = {
+  donut_large: LayoutDashboard,
+  person: User,
+  account_circle: UserCircle,
+  key: KeyRound,
+};
 
 function DefaultNavbarLink({ icon, name, route, light }) {
+  const IconCmp = NAV_ICONS[icon] || LayoutDashboard;
+  const iconClass = light ? "text-white" : "text-slate-500";
+
   return (
     <MDBox
       component={Link}
@@ -34,22 +22,15 @@ function DefaultNavbarLink({ icon, name, route, light }) {
       p={1}
       display="flex"
       alignItems="center"
-      sx={{ cursor: "pointer", userSelect: "none" }}
+      className="cursor-pointer select-none no-underline"
     >
-      <Icon
-        sx={{
-          color: ({ palette: { white, secondary } }) => (light ? white.main : secondary.main),
-          verticalAlign: "middle",
-        }}
-      >
-        {icon}
-      </Icon>
+      <IconCmp className={`h-5 w-5 shrink-0 ${iconClass}`} strokeWidth={2} aria-hidden />
       <MDTypography
         variant="button"
         fontWeight="regular"
         color={light ? "white" : "dark"}
         textTransform="capitalize"
-        sx={{ width: "100%", lineHeight: 0 }}
+        className="w-full leading-none"
       >
         &nbsp;{name}
       </MDTypography>
@@ -57,7 +38,6 @@ function DefaultNavbarLink({ icon, name, route, light }) {
   );
 }
 
-// Typechecking props for the DefaultNavbarLink
 DefaultNavbarLink.propTypes = {
   icon: PropTypes.string.isRequired,
   name: PropTypes.string.isRequired,

@@ -1,41 +1,11 @@
 import { MDBox, MDTypography, MDButton } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-
-* Product Page: https://www.goaltime.site/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
 import { useState, useEffect } from "react";
-
-// react-router components
 import { Link } from "react-router-dom";
-
-// prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
-
-// @mui material components
-import Container from "@mui/material/Container";
-import Icon from "@mui/material/Icon";
-
-// GoalTime App components
-
-// GoalTime App example components
-import DefaultNavbarLink from "shared/components/layout/Navbars/DefaultNavbar/DefaultNavbarLink";
-import DefaultNavbarMobile from "shared/components/layout/Navbars/DefaultNavbar/DefaultNavbarMobile";
-
-// GoalTime App base styles
+import { Menu, X } from "lucide-react";
+import DefaultNavbarLink from "./DefaultNavbarLink";
+import DefaultNavbarMobile from "./DefaultNavbarMobile";
 import breakpoints from "assets/theme/base/breakpoints";
-
-// GoalTime App context
 import { useMaterialUIController } from "shared/context";
 
 function DefaultNavbar({ transparent, light, action }) {
@@ -45,11 +15,10 @@ function DefaultNavbar({ transparent, light, action }) {
   const [mobileNavbar, setMobileNavbar] = useState(false);
   const [mobileView, setMobileView] = useState(false);
 
-  const openMobileNavbar = ({ currentTarget }) => setMobileNavbar(currentTarget.parentNode);
+  const openMobileNavbar = (e) => setMobileNavbar(e.currentTarget);
   const closeMobileNavbar = () => setMobileNavbar(false);
 
   useEffect(() => {
-    // A function that sets the display state for the DefaultNavbarMobile.
     function displayMobileNavbar() {
       if (window.innerWidth < breakpoints.values.lg) {
         setMobileView(true);
@@ -60,45 +29,28 @@ function DefaultNavbar({ transparent, light, action }) {
       }
     }
 
-    /** 
-     The event listener that's calling the displayMobileNavbar function when 
-     resizing the window.
-    */
     window.addEventListener("resize", displayMobileNavbar);
-
-    // Call the displayMobileNavbar function to set the state with the initial value.
     displayMobileNavbar();
-
-    // Remove event listener on cleanup
     return () => window.removeEventListener("resize", displayMobileNavbar);
   }, []);
 
+  const barBg = transparent
+    ? "bg-transparent backdrop-blur-none"
+    : darkMode
+    ? "bg-slate-900/80 backdrop-blur-xl backdrop-saturate-200"
+    : "bg-white/80 backdrop-blur-xl backdrop-saturate-200";
+
+  const textColor = light ? "text-white" : "text-slate-900";
+
   return (
-    <Container>
-      <MDBox
-        py={1}
-        px={{ xs: 4, sm: transparent ? 2 : 3, lg: transparent ? 0 : 2 }}
-        my={3}
-        mx={3}
-        width="calc(100% - 48px)"
-        borderRadius="lg"
-        shadow={transparent ? "none" : "md"}
-        color={light ? "white" : "dark"}
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        position="absolute"
-        left={0}
-        zIndex={3}
-        sx={({
-          palette: { transparent: transparentColor, white, background },
-          functions: { rgba },
-        }) => ({
-          backgroundColor: transparent
-            ? transparentColor.main
-            : rgba(darkMode ? background.sidenav : white.main, 0.8),
-          backdropFilter: transparent ? "none" : `saturate(200%) blur(30px)`,
-        })}
+    <div className="mx-auto max-w-7xl px-4">
+      <div
+        className={[
+          "absolute left-1/2 z-[3] my-3 flex w-[calc(100%-48px)] max-w-[calc(100%-48px)] -translate-x-1/2 items-center justify-between rounded-xl py-2 pl-4 pr-3 sm:pl-6 sm:pr-4 lg:pl-6 lg:pr-4",
+          transparent ? "shadow-none" : "shadow-md",
+          barBg,
+          textColor,
+        ].join(" ")}
       >
         <MDBox
           component={Link}
@@ -106,6 +58,7 @@ function DefaultNavbar({ transparent, light, action }) {
           py={transparent ? 1.5 : 0.75}
           lineHeight={1}
           pl={{ xs: 0, lg: 1 }}
+          className="no-underline"
         >
           <MDTypography variant="button" fontWeight="bold" color={light ? "white" : "dark"}>
             Material Dashboard 2
@@ -120,67 +73,65 @@ function DefaultNavbar({ transparent, light, action }) {
             route="/authentication/sign-up"
             light={light}
           />
-          <DefaultNavbarLink
-            icon="key"
-            name="sign in"
-            route="/authentication/sign-in"
-            light={light}
-          />
+          <DefaultNavbarLink icon="key" name="sign in" route="/authentication/sign-in" light={light} />
         </MDBox>
         {action &&
           (action.type === "internal" ? (
-            <MDBox display={{ xs: "none", lg: "inline-block" }}>
-              <MDButton
-                component={Link}
-                to={action.route}
-                variant="gradient"
-                color={action.color ? action.color : "info"}
-                size="small"
-              >
-                {action.label}
-              </MDButton>
-            </MDBox>
+            <div className="hidden lg:inline-block">
+              <Link to={action.route} className="no-underline">
+                <MDButton
+                  variant="contained"
+                  color={action.color ? action.color : "info"}
+                  size="small"
+                >
+                  {action.label}
+                </MDButton>
+              </Link>
+            </div>
           ) : (
-            <MDBox display={{ xs: "none", lg: "inline-block" }}>
-              <MDButton
-                component="a"
+            <div className="hidden lg:inline-block">
+              <a
                 href={action.route}
                 target="_blank"
                 rel="noreferrer"
-                variant="gradient"
-                color={action.color ? action.color : "info"}
-                size="small"
-                sx={{ mt: -0.3 }}
+                className="no-underline"
               >
-                {action.label}
-              </MDButton>
-            </MDBox>
+                <MDButton
+                  variant="contained"
+                  color={action.color ? action.color : "info"}
+                  size="small"
+                  className="-mt-0.5"
+                >
+                  {action.label}
+                </MDButton>
+              </a>
+            </div>
           ))}
-        <MDBox
-          display={{ xs: "inline-block", lg: "none" }}
-          lineHeight={0}
-          py={1.5}
-          pl={1.5}
-          color="inherit"
-          sx={{ cursor: "pointer" }}
-          onClick={openMobileNavbar}
+        <button
+          type="button"
+          className="inline-flex cursor-pointer items-center p-2 text-inherit lg:hidden"
+          aria-label={mobileNavbar ? "Cerrar menú" : "Abrir menú"}
+          aria-expanded={Boolean(mobileNavbar)}
+          onClick={mobileNavbar ? closeMobileNavbar : openMobileNavbar}
         >
-          <Icon fontSize="default">{mobileNavbar ? "close" : "menu"}</Icon>
-        </MDBox>
-      </MDBox>
+          {mobileNavbar ? (
+            <X className="h-6 w-6" strokeWidth={2} aria-hidden />
+          ) : (
+            <Menu className="h-6 w-6" strokeWidth={2} aria-hidden />
+          )}
+        </button>
+      </div>
       {mobileView && <DefaultNavbarMobile open={mobileNavbar} close={closeMobileNavbar} />}
-    </Container>
+    </div>
   );
 }
 
-// Setting default values for the props of DefaultNavbar
 DefaultNavbar.defaultProps = {
   transparent: false,
   light: false,
   action: false,
 };
 
-// Typechecking props for the DefaultNavbar
 DefaultNavbar.propTypes = {
   transparent: PropTypes.bool,
   light: PropTypes.bool,

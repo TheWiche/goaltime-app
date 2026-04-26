@@ -1,25 +1,33 @@
-import { MDButton, MDBox, MDTypography } from "shared/components/md-shims";
-// src/layouts/canchas/components/ReservationModal/index.js
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Grid,
-  CircularProgress,
-  Typography,
-  MenuItem,
-  FormHelperText,
-  Chip,
-  Box,
-  Tooltip,
-} from "@mui/material";
-import Icon from "@mui/material/Icon";
+  CalendarCheck2,
+  Clock,
+  CircleCheck,
+  Info,
+  Calendar,
+  Banknote,
+  MapPin,
+  Zap,
+} from "lucide-react";
+import Spinner from "shared/components/ui/Spinner";
+import { Modal, Button, TextField, SelectField, SectionCard } from "shared/components/ui";
 import { getAvailableTimeSlots } from "shared/services/firebaseService";
+
+const DURATION_OPTIONS = [
+  { value: "1", label: "1 hora" },
+  { value: "2", label: "2 horas" },
+  { value: "3", label: "3 horas" },
+  { value: "4", label: "4 horas" },
+  { value: "5", label: "5 horas" },
+  { value: "6", label: "6 horas" },
+];
+
+function getTomorrowISO() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return tomorrow.toISOString().split("T")[0];
+}
 
 function ReservationModal({ open, onClose, onSubmit, loading, field }) {
   const [selectedDate, setSelectedDate] = useState("");
@@ -28,31 +36,23 @@ function ReservationModal({ open, onClose, onSubmit, loading, field }) {
   const [availableTimes, setAvailableTimes] = useState([]);
   const [loadingTimes, setLoadingTimes] = useState(false);
 
-  // Limpiar el formulario cuando se cierra el modal
   useEffect(() => {
     if (!open) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      setSelectedDate(tomorrow.toISOString().split("T")[0]);
+      setSelectedDate(getTomorrowISO());
       setSelectedTime("");
       setDuration("1");
       setAvailableTimes([]);
     } else if (open && !selectedDate) {
-      // Establecer fecha mínima como mañana
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      setSelectedDate(tomorrow.toISOString().split("T")[0]);
+      setSelectedDate(getTomorrowISO());
     }
   }, [open, selectedDate]);
 
-  // Cargar horas disponibles cuando cambia la fecha o se abre el modal
   useEffect(() => {
     const loadAvailableTimes = async () => {
       if (!open || !field || !selectedDate || !field.openingTime || !field.closingTime) {
         setAvailableTimes([]);
         return;
       }
-
       setLoadingTimes(true);
       try {
         const times = await getAvailableTimeSlots(
@@ -62,286 +62,248 @@ function ReservationModal({ open, onClose, onSubmit, loading, field }) {
           field.closingTime
         );
         setAvailableTimes(times);
-
-        // Si la hora seleccionada ya no está disponible, limpiarla
-        if (selectedTime && !times.includes(selectedTime)) {
-          setSelectedTime("");
-        }
+        if (selectedTime && !times.includes(selectedTime)) setSelectedTime("");
       } catch (error) {
         console.error("Error al cargar horas disponibles:", error);
-        // En caso de error, generar todas las horas del horario como fallback
-        if (field?.openingTime && field?.closingTime) {
-          const [openHour, openMin] = field.openingTime.split(":").map(Number);
-          const [closeHour, closeMin] = field.closingTime.split(":").map(Number);
-          const allTimes = [];
-          let currentHour = openHour;
-          let currentMin = openMin;
-
-          while (currentHour < closeHour || (currentHour === closeHour && currentMin < closeMin)) {
-            allTimes.push(
-              `${currentHour.toString().padStart(2, "0")}:${currentMin.toString().padStart(2, "0")}`
-            );
-            currentMin += 30;
-            if (currentMin >= 60) {
-              currentMin = 0;
-              currentHour += 1;
-            }
-          }
-          setAvailableTimes(allTimes);
-        } else {
-          setAvailableTimes([]);
-        }
+        setAvailableTimes([]);
       } finally {
         setLoadingTimes(false);
       }
     };
-
     loadAvailableTimes();
-  }, [open, field, selectedDate, selectedTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, field, selectedDate]);
+
+  const totalPrice = useMemo(
+    () => (field ? field.pricePerHour * parseInt(duration, 10) : 0),
+    [field, duration]
+  );
+
+  const endTime = useMemo(() => {
+    if (!selectedTime) return null;
+    const [hours, minutes] = selectedTime.split(":").map(Number);
+    const start = new Date();
+    start.setHours(hours, minutes, 0);
+    start.setHours(start.getHours() + parseInt(duration, 10));
+    return `${start.getHours().toString().padStart(2, "0")}:${start
+      .getMinutes()
+      .toString()
+      .padStart(2, "0")}`;
+  }, [selectedTime, duration]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!loading && selectedDate && selectedTime) {
-      // Calcular hora de fin basada en la duración
-      const [hours, minutes] = selectedTime.split(":").map(Number);
-      const startDateTime = new Date(`${selectedDate}T${selectedTime}`);
-      const endDateTime = new Date(startDateTime);
-      endDateTime.setHours(endDateTime.getHours() + parseInt(duration));
-
-      const endTime = `${endDateTime.getHours().toString().padStart(2, "0")}:${endDateTime
-        .getMinutes()
-        .toString()
-        .padStart(2, "0")}`;
-
-      onSubmit({
-        fieldId: field.id,
-        fieldName: field.name,
-        date: selectedDate,
-        startTime: selectedTime,
-        endTime: endTime,
-        duration: parseInt(duration),
-        totalPrice: field.pricePerHour * parseInt(duration),
-      });
-    }
+    if (loading || !selectedDate || !selectedTime || !field) return;
+    onSubmit({
+      fieldId: field.id,
+      fieldName: field.name,
+      date: selectedDate,
+      startTime: selectedTime,
+      endTime,
+      duration: parseInt(duration, 10),
+      totalPrice,
+    });
   };
 
-  const totalPrice = field ? field.pricePerHour * parseInt(duration) : 0;
+  if (!field) return null;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Reservar Cancha: {field?.name}</DialogTitle>
-      <form onSubmit={handleSubmit}>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <MDBox mb={2}>
-                <MDTypography variant="body2" color="text">
-                  <strong>Dirección:</strong> {field?.address}
-                </MDTypography>
-                <MDTypography variant="body2" color="text">
-                  <strong>Precio por hora:</strong> ${field?.pricePerHour || 0}
-                </MDTypography>
-                <MDTypography variant="body2" color="text">
-                  <strong>Horario:</strong> {field?.openingTime} - {field?.closingTime}
-                </MDTypography>
-              </MDBox>
-            </Grid>
-            <Grid item xs={12}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="2xl"
+      variant="hero"
+      eyebrow="Reservar cancha"
+      title={field.name}
+      subtitle={field.address}
+      icon={<CalendarCheck2 className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />}
+      bodyClassName="bg-slate-50 px-0 py-0"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            form="reservation-form"
+            variant="primary"
+            loading={loading}
+            disabled={loading || !selectedTime}
+          >
+            <CircleCheck className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+            Confirmar reserva · ${totalPrice.toFixed(2)}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="reservation-form"
+        onSubmit={handleSubmit}
+        className="px-6 sm:px-8 py-7 grid grid-cols-1 lg:grid-cols-12 gap-6"
+      >
+        <div className="lg:col-span-8 space-y-5">
+          <SectionCard
+            eyebrow="Paso 1"
+            title="Fecha y duración"
+            icon={<Calendar className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <TextField
-                autoFocus
-                margin="dense"
-                id="date"
-                label="Fecha de Reserva"
+                id="reservation-date"
+                label="Fecha de reserva"
                 type="date"
-                fullWidth
-                variant="standard"
+                required
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                required
-                InputLabelProps={{ shrink: true }}
-                inputProps={{
-                  min: new Date(new Date().setDate(new Date().getDate() + 1))
-                    .toISOString()
-                    .split("T")[0],
-                }}
+                min={getTomorrowISO()}
+                hint="Solo a partir de mañana."
               />
-            </Grid>
-            <Grid item xs={12}>
-              <MDBox>
-                <MDTypography variant="body2" fontWeight="medium" mb={1.5}>
-                  Hora de Inicio
-                  {loadingTimes && (
-                    <CircularProgress size={14} sx={{ ml: 1, verticalAlign: "middle" }} />
-                  )}
-                </MDTypography>
-                {loadingTimes ? (
-                  <MDBox
-                    display="flex"
-                    justifyContent="center"
-                    alignItems="center"
-                    py={3}
-                    borderRadius="lg"
-                    bgcolor="grey.100"
-                  >
-                    <CircularProgress size={24} />
-                    <MDTypography variant="body2" color="text" sx={{ ml: 2 }}>
-                      Cargando horas disponibles...
-                    </MDTypography>
-                  </MDBox>
-                ) : availableTimes.length === 0 ? (
-                  <MDBox
-                    p={2}
-                    borderRadius="lg"
-                    bgcolor="error.lighter"
-                    border="1px solid"
-                    borderColor="error.main"
-                  >
-                    <MDBox display="flex" alignItems="center">
-                      <Icon sx={{ color: "error.main", mr: 1 }}>info</Icon>
-                      <MDTypography variant="body2" color="error">
-                        No hay horas disponibles para esta fecha. Por favor, selecciona otra fecha.
-                      </MDTypography>
-                    </MDBox>
-                  </MDBox>
-                ) : (
-                  <MDBox>
-                    <MDBox
-                      display="flex"
-                      flexWrap="wrap"
-                      gap={1}
-                      p={2}
-                      borderRadius="lg"
-                      bgcolor="grey.50"
-                      border="1px solid"
-                      borderColor="divider"
-                      maxHeight="200px"
-                      sx={{
-                        overflowY: "auto",
-                        "&::-webkit-scrollbar": {
-                          width: "8px",
-                        },
-                        "&::-webkit-scrollbar-track": {
-                          background: "transparent",
-                        },
-                        "&::-webkit-scrollbar-thumb": {
-                          background: "rgba(0,0,0,0.2)",
-                          borderRadius: "4px",
-                        },
-                        "&::-webkit-scrollbar-thumb:hover": {
-                          background: "rgba(0,0,0,0.3)",
-                        },
-                      }}
-                    >
-                      {availableTimes.map((time) => {
-                        const isSelected = selectedTime === time;
-                        return (
-                          <Tooltip key={time} title={`Hora disponible: ${time}`} arrow>
-                            <Chip
-                              label={time}
-                              onClick={() => setSelectedTime(time)}
-                              sx={{
-                                cursor: "pointer",
-                                transition: "all 0.2s ease-in-out",
-                                transform: isSelected ? "scale(1.05)" : "scale(1)",
-                                bgcolor: isSelected ? "info.main" : "white",
-                                color: isSelected ? "white" : "text.primary",
-                                fontWeight: isSelected ? "bold" : "normal",
-                                border: isSelected ? "2px solid" : "1px solid",
-                                borderColor: isSelected ? "info.dark" : "divider",
-                                "&:hover": {
-                                  bgcolor: isSelected ? "info.dark" : "info.lighter",
-                                },
-                                boxShadow: isSelected
-                                  ? "0 4px 8px rgba(0,0,0,0.15)"
-                                  : "0 2px 4px rgba(0,0,0,0.08)",
-                                "& .MuiChip-label": {
-                                  px: 2,
-                                  py: 1,
-                                  fontSize: "0.875rem",
-                                },
-                              }}
-                              icon={
-                                isSelected ? (
-                                  <Icon sx={{ color: "white !important", fontSize: "1rem" }}>
-                                    check_circle
-                                  </Icon>
-                                ) : (
-                                  <Icon sx={{ color: "info.main", fontSize: "1rem" }}>
-                                    schedule
-                                  </Icon>
-                                )
-                              }
-                            />
-                          </Tooltip>
-                        );
-                      })}
-                    </MDBox>
-                    <MDBox mt={1} display="flex" alignItems="center" justifyContent="space-between">
-                      <MDTypography variant="caption" color="text">
-                        <Icon sx={{ fontSize: "0.875rem", verticalAlign: "middle", mr: 0.5 }}>
-                          info
-                        </Icon>
-                        {availableTimes.length} hora(s) disponible(s)
-                      </MDTypography>
-                      {selectedTime && (
-                        <MDTypography variant="caption" color="success" fontWeight="medium">
-                          <Icon sx={{ fontSize: "0.875rem", verticalAlign: "middle", mr: 0.5 }}>
-                            check_circle
-                          </Icon>
-                          Seleccionada: {selectedTime}
-                        </MDTypography>
-                      )}
-                    </MDBox>
-                  </MDBox>
-                )}
-              </MDBox>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                margin="dense"
-                id="duration"
-                label="Duración (horas)"
-                type="number"
-                fullWidth
-                variant="standard"
+              <SelectField
+                id="reservation-duration"
+                label="Duración"
+                required
                 value={duration}
                 onChange={(e) => setDuration(e.target.value)}
-                required
-                inputProps={{ min: 1, max: 8, step: 1 }}
+                options={DURATION_OPTIONS}
               />
-            </Grid>
-            <Grid item xs={12}>
-              <MDBox
-                p={2}
-                borderRadius="lg"
-                bgColor="info"
-                variant="gradient"
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-              >
-                <MDTypography variant="h6" color="white">
-                  Total a Pagar:
-                </MDTypography>
-                <MDTypography variant="h5" color="white" fontWeight="bold">
-                  ${totalPrice.toFixed(2)}
-                </MDTypography>
-              </MDBox>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <MDButton onClick={onClose} color="secondary" disabled={loading}>
-            Cancelar
-          </MDButton>
-          <MDButton type="submit" variant="gradient" color="info" disabled={loading}>
-            {loading ? <CircularProgress size={20} color="inherit" /> : "Confirmar Reserva"}
-          </MDButton>
-        </DialogActions>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            eyebrow="Paso 2"
+            title="Hora de inicio"
+            subtitle={
+              loadingTimes
+                ? "Cargando horarios disponibles..."
+                : `${availableTimes.length} hora(s) disponible(s) para esta fecha.`
+            }
+            icon={<Clock className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+          >
+            {loadingTimes ? (
+              <div className="flex items-center justify-center py-10 text-slate-500 gap-3">
+                <Spinner size="sm" />
+                <span className="text-sm">Cargando horas disponibles…</span>
+              </div>
+            ) : availableTimes.length === 0 ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-4 flex items-start gap-3">
+                <Info className="h-[22px] w-[22px] shrink-0 text-rose-700" strokeWidth={2} aria-hidden />
+                <div>
+                  <p className="text-sm font-semibold text-rose-900">
+                    Sin horarios disponibles
+                  </p>
+                  <p className="text-xs text-rose-800 mt-0.5">
+                    Selecciona otra fecha para ver opciones.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1 -mr-1">
+                {availableTimes.map((time) => {
+                  const active = selectedTime === time;
+                  return (
+                    <button
+                      key={time}
+                      type="button"
+                      onClick={() => setSelectedTime(time)}
+                      className={[
+                        "relative flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 cursor-pointer",
+                        "focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
+                        active
+                          ? "bg-primary text-white border-primary shadow-md"
+                          : "bg-white text-slate-700 border-slate-200 hover:border-primary/50 hover:text-primary hover:bg-primary-50/40",
+                      ].join(" ")}
+                    >
+                      <Clock
+                        className={active ? "h-3.5 w-3.5 opacity-90" : "h-3.5 w-3.5 opacity-60"}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      {time}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        <aside className="lg:col-span-4 space-y-5">
+          <SectionCard
+            eyebrow="Resumen"
+            title="Tu reserva"
+            icon={<Zap className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+          >
+            <SummaryRow
+              icon={<MapPin className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+              label="Cancha"
+              value={field.name}
+            />
+            <SummaryRow
+              icon={<Calendar className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+              label="Fecha"
+              value={
+                selectedDate
+                  ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString("es-ES", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    })
+                  : "—"
+              }
+            />
+            <SummaryRow
+              icon={<Clock className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+              label="Horario"
+              value={selectedTime ? `${selectedTime} – ${endTime}` : "Sin selección"}
+            />
+            <SummaryRow
+              icon={<Clock className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+              label="Duración"
+              value={`${duration} hora(s)`}
+            />
+            <SummaryRow
+              icon={<Banknote className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+              label="Tarifa"
+              value={`$${field.pricePerHour}/h`}
+            />
+
+            <div className="mt-4 rounded-xl bg-gradient-to-br from-primary-900 via-primary to-secondary text-white p-4">
+              <p className="text-[11px] uppercase tracking-wider text-white/70 font-semibold">
+                Total a pagar
+              </p>
+              <p className="text-3xl font-bold font-heading mt-0.5">
+                ${totalPrice.toFixed(2)}
+              </p>
+              <p className="text-xs text-white/70 mt-1">
+                Pago presencial al llegar a la cancha.
+              </p>
+            </div>
+          </SectionCard>
+        </aside>
       </form>
-    </Dialog>
+    </Modal>
   );
 }
+
+function SummaryRow({ icon, label, value }) {
+  return (
+    <div className="flex items-start justify-between py-2 border-b border-slate-100 last:border-0">
+      <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+        {icon}
+        {label}
+      </span>
+      <span className="text-sm font-medium text-slate-900 text-right ml-2 truncate max-w-[55%]">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+SummaryRow.propTypes = {
+  icon: PropTypes.node.isRequired,
+  label: PropTypes.string.isRequired,
+  value: PropTypes.node.isRequired,
+};
 
 ReservationModal.propTypes = {
   open: PropTypes.bool.isRequired,
@@ -351,9 +313,6 @@ ReservationModal.propTypes = {
   field: PropTypes.object,
 };
 
-ReservationModal.defaultProps = {
-  loading: false,
-  field: null,
-};
+ReservationModal.defaultProps = { loading: false, field: null };
 
 export default ReservationModal;

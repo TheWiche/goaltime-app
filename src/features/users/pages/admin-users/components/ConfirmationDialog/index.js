@@ -1,67 +1,83 @@
 import PropTypes from "prop-types";
-import { Dialog, DialogContent, IconButton } from "@mui/material";
-import { Close, WarningAmber } from "@mui/icons-material";
-import { Button } from "shared/components/ui";
+import { TriangleAlert, CircleCheck, Info } from "lucide-react";
+import { Modal, Button } from "shared/components/ui";
 
-function ConfirmationDialog({ open, onClose, onConfirm, title, message, confirmColor = "error" }) {
-  const isDestructive = confirmColor === "error";
-  const confirmVariant = isDestructive ? "danger" : "primary";
+const tones = {
+  error: {
+    iconBg: "bg-rose-50 text-rose-600",
+    Icon: TriangleAlert,
+    confirmVariant: "danger",
+  },
+  warning: {
+    iconBg: "bg-amber-50 text-amber-600",
+    Icon: TriangleAlert,
+    confirmVariant: "primary",
+  },
+  success: {
+    iconBg: "bg-emerald-50 text-emerald-600",
+    Icon: CircleCheck,
+    confirmVariant: "primary",
+  },
+  info: {
+    iconBg: "bg-primary-50 text-primary",
+    Icon: Info,
+    confirmVariant: "primary",
+  },
+  primary: {
+    iconBg: "bg-primary-50 text-primary",
+    Icon: Info,
+    confirmVariant: "primary",
+  },
+};
+
+function ConfirmationDialog({
+  open,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmColor = "error",
+  confirmLabel = "Confirmar",
+  cancelLabel = "Cancelar",
+  loading = false,
+}) {
+  const tone = tones[confirmColor] || tones.info;
+  const Icon = tone.Icon;
 
   return (
-    <Dialog
+    <Modal
       open={open}
       onClose={onClose}
-      maxWidth="xs"
-      fullWidth
-      PaperProps={{
-        sx: {
-          borderRadius: "20px",
-          overflow: "hidden",
-          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12)",
-        },
-      }}
-    >
-      <div className="relative bg-gradient-to-br from-primary to-primary-600 px-6 pt-6 pb-5">
-        <IconButton
-          onClick={onClose}
-          size="small"
-          sx={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            color: "white",
-            bgcolor: "rgba(255,255,255,0.15)",
-            "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
-          }}
-        >
-          <Close fontSize="small" />
-        </IconButton>
-        <div className="flex items-start gap-3 pr-10">
-          <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-              isDestructive ? "bg-red-500/30" : "bg-white/20"
-            }`}
+      size="sm"
+      eyebrow="Confirmación"
+      title={title}
+      subtitle={message}
+      icon={
+        <span className={`inline-flex items-center justify-center w-full h-full rounded-xl ${tone.iconBg}`}>
+          <Icon className="h-[22px] w-[22px] shrink-0" strokeWidth={2} aria-hidden />
+        </span>
+      }
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
+            {cancelLabel}
+          </Button>
+          <Button
+            type="button"
+            variant={tone.confirmVariant}
+            onClick={onConfirm}
+            loading={loading}
+            disabled={loading}
           >
-            <WarningAmber sx={{ color: "white", fontSize: 28 }} />
-          </div>
-          <h2 className="text-lg font-bold font-heading text-white leading-snug">{title}</h2>
-        </div>
-      </div>
-
-      <DialogContent sx={{ p: 0 }}>
-        <div className="px-6 py-5">
-          <p className="text-sm text-gray-700 leading-relaxed">{message}</p>
-        </div>
-        <div className="px-6 py-4 bg-surface-50 border-t border-surface-200 flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancelar
+            {confirmLabel}
           </Button>
-          <Button type="button" variant={confirmVariant} onClick={onConfirm}>
-            Confirmar
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <p className="text-sm text-slate-600 leading-relaxed">
+        Esta acción se aplicará de inmediato. Verifica que sea la decisión correcta antes de continuar.
+      </p>
+    </Modal>
   );
 }
 
@@ -71,15 +87,10 @@ ConfirmationDialog.propTypes = {
   onConfirm: PropTypes.func.isRequired,
   title: PropTypes.string.isRequired,
   message: PropTypes.string.isRequired,
-  confirmColor: PropTypes.oneOf([
-    "error",
-    "success",
-    "info",
-    "warning",
-    "primary",
-    "secondary",
-    "dark",
-  ]),
+  confirmColor: PropTypes.oneOf(["error", "warning", "success", "info", "primary"]),
+  confirmLabel: PropTypes.string,
+  cancelLabel: PropTypes.string,
+  loading: PropTypes.bool,
 };
 
 export default ConfirmationDialog;

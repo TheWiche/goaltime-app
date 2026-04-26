@@ -8,8 +8,8 @@ import { db } from "shared/services/firebaseService";
 import { useAuth } from "shared/context/AuthContext";
 import useDebounce from "shared/hooks/useDebounce";
 
-import Chip from "@mui/material/Chip";
-import Icon from "@mui/material/Icon";
+import { Pencil, CircleCheck, Ban } from "lucide-react";
+import { StatusPill } from "shared/components/ui";
 
 export default function useFieldsTableData(searchTerm, statusFilter, onEditField, onToggleDisable) {
   const [fields, setFields] = useState([]);
@@ -137,12 +137,12 @@ export default function useFieldsTableData(searchTerm, statusFilter, onEditField
     };
   }, [debouncedSearchTerm, statusFilter, userProfile]);
 
-  const getStatusColor = (status) => {
+  const getStatusTone = (status) => {
     if (status === "approved") return "success";
     if (status === "pending") return "warning";
-    if (status === "rejected") return "error";
-    if (status === "disabled") return "secondary";
-    return "default";
+    if (status === "rejected") return "danger";
+    if (status === "disabled") return "neutral";
+    return "neutral";
   };
 
   const getStatusText = (status) => {
@@ -190,34 +190,36 @@ export default function useFieldsTableData(searchTerm, statusFilter, onEditField
         </MDTypography>
       ),
       acciones: (
-        <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+        <div className="flex flex-wrap justify-center gap-2">
           <MDButton
             variant="outlined"
             color="info"
             size="small"
+            className="inline-flex items-center gap-1.5"
             onClick={() => {
               if (onEditField) onEditField(field);
             }}
           >
-            <Icon fontSize="small" sx={{ mr: 0.5 }}>
-              edit
-            </Icon>
+            <Pencil className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
             Editar
           </MDButton>
           <MDButton
             variant="outlined"
             color={field.status === "disabled" ? "success" : "error"}
             size="small"
+            className="inline-flex items-center gap-1.5"
             onClick={() => {
               if (onToggleDisable) onToggleDisable(field);
             }}
           >
-            <Icon fontSize="small" sx={{ mr: 0.5 }}>
-              {field.status === "disabled" ? "check_circle" : "cancel"}
-            </Icon>
+            {field.status === "disabled" ? (
+              <CircleCheck className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+            ) : (
+              <Ban className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+            )}
             {field.status === "disabled" ? "Habilitar" : "Deshabilitar"}
           </MDButton>
-        </MDBox>
+        </div>
       ),
     };
   });

@@ -3,8 +3,8 @@ import { MDBox, MDTypography, MDButton, MDSnackbar } from "shared/components/md-
 
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CircularProgress, LinearProgress } from "@mui/material";
-import { Email, CheckCircle, Refresh, MailOutline } from "@mui/icons-material";
+import { Mail, CircleCheck, RefreshCw } from "lucide-react";
+import Spinner from "shared/components/ui/Spinner";
 import SplitScreenLayout from "features/auth/components/SplitScreenLayout";
 import bgImage from "assets/images/bg-sign-up-cover.png";
 import { auth, resendVerificationEmail, verifyEmailWithCode } from "shared/services/firebaseService";
@@ -288,7 +288,7 @@ function VerifyEmail() {
       }}
     >
       <MDBox sx={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-        <Email sx={{ fontSize: 80, color: "white", mb: 2, opacity: 0.9 }} />
+        <Mail className="mx-auto mb-4 h-20 w-20 text-white opacity-90" strokeWidth={1.5} aria-hidden />
         <MDTypography variant="h3" fontWeight="bold" color="white" mb={2}>
           Verifica tu Email
         </MDTypography>
@@ -317,7 +317,7 @@ function VerifyEmail() {
         {isChecking ? (
           <>
             <MDBox display="flex" justifyContent="center" mb={3}>
-              <CircularProgress size={60} sx={{ color: (theme) => theme.palette.goaltime.main }} />
+              <Spinner size="lg" className="border-primary" />
             </MDBox>
             <MDTypography variant="h4" fontWeight="bold" color="dark" mb={2} textAlign="center">
               Verificando...
@@ -325,29 +325,16 @@ function VerifyEmail() {
             <MDTypography variant="body1" color="text" mb={3} textAlign="center">
               Estamos verificando el estado de tu email. Por favor, espera un momento.
             </MDTypography>
-            <LinearProgress
-              sx={{
-                height: 6,
-                borderRadius: 1,
-                backgroundColor: "grey.200",
-                "& .MuiLinearProgress-bar": {
-                  backgroundColor: (theme) => theme.palette.goaltime.main,
-                },
-              }}
-            />
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full w-2/5 animate-pulse rounded-full bg-primary" />
+            </div>
           </>
         ) : isVerified ? (
           <>
             <MDBox display="flex" justifyContent="center" mb={3}>
-              <CheckCircle sx={{ fontSize: 80, color: "success.main" }} />
+              <CircleCheck className="mx-auto h-20 w-20 text-emerald-600" strokeWidth={1.5} aria-hidden />
             </MDBox>
-            <MDTypography
-              variant="h4"
-              fontWeight="bold"
-              color="success.main"
-              mb={2}
-              textAlign="center"
-            >
+            <MDTypography variant="h4" className="mb-2 text-center font-bold text-emerald-600">
               ¡Email Verificado!
             </MDTypography>
             <MDTypography variant="body1" color="text" mb={4} textAlign="center">
@@ -357,7 +344,7 @@ function VerifyEmail() {
         ) : (
           <>
             <MDBox display="flex" justifyContent="center" mb={3}>
-              <MailOutline sx={{ fontSize: 80, color: (theme) => theme.palette.goaltime.main }} />
+              <Mail className="mx-auto h-20 w-20 text-primary" strokeWidth={1.5} aria-hidden />
             </MDBox>
             <MDTypography variant="h4" fontWeight="bold" color="dark" mb={2} textAlign="center">
               Verifica tu Email
@@ -365,20 +352,11 @@ function VerifyEmail() {
             <MDTypography variant="body1" color="text" mb={3} textAlign="center">
               Hemos enviado un enlace de verificación a:
             </MDTypography>
-            <MDBox
-              sx={{
-                p: 2,
-                mb: 3,
-                borderRadius: 2,
-                backgroundColor: "grey.100",
-                border: "1px solid",
-                borderColor: "grey.300",
-              }}
-            >
-              <MDTypography variant="body1" fontWeight="medium" color="dark" textAlign="center">
+            <div className="mb-3 rounded-xl border border-slate-300 bg-slate-100 p-4">
+              <MDTypography variant="body1" className="text-center font-medium text-slate-900">
                 {userEmail}
               </MDTypography>
-            </MDBox>
+            </div>
             <MDTypography variant="body2" color="text" mb={4} textAlign="center">
               Haz clic en el enlace del email para verificar tu cuenta. Esta página se actualizará
               automáticamente cuando verifiques tu email.
@@ -389,23 +367,9 @@ function VerifyEmail() {
               fullWidth
               onClick={handleResendEmail}
               disabled={isResending || cooldownSeconds > 0}
-              sx={{
-                mb: 2,
-                borderColor: (theme) => theme.palette.goaltime.main,
-                color: (theme) => theme.palette.goaltime.main,
-                textTransform: "none",
-                py: 1.5,
-                "&:hover": {
-                  borderColor: (theme) => theme.palette.goaltime.dark,
-                  backgroundColor: (theme) => `${theme.palette.goaltime.main}10`,
-                },
-                "&:disabled": {
-                  borderColor: "grey.300",
-                  color: "grey.500",
-                },
-              }}
-              startIcon={isResending ? <CircularProgress size={20} /> : <Refresh />}
+              className="mb-2 inline-flex w-full items-center justify-center gap-2 border-primary py-3 text-primary normal-case hover:bg-primary/10 disabled:border-slate-300 disabled:text-slate-500"
             >
+              {isResending ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />}
               {isResending
                 ? "Reenviando..."
                 : cooldownSeconds > 0
@@ -417,14 +381,7 @@ function VerifyEmail() {
               variant="text"
               fullWidth
               onClick={handleGoToSignIn}
-              sx={{
-                textTransform: "none",
-                color: "text.secondary",
-                "&:hover": {
-                  backgroundColor: "transparent",
-                  textDecoration: "underline",
-                },
-              }}
+              className="normal-case text-slate-600 hover:bg-transparent hover:underline"
             >
               Ya verifiqué mi email, ir a iniciar sesión
             </MDButton>
@@ -432,25 +389,16 @@ function VerifyEmail() {
         )}
 
         {!isVerified && !isChecking && (
-          <MDBox
-            mt={4}
-            p={2}
-            borderRadius={2}
-            sx={{
-              backgroundColor: "info.lighter",
-              border: "1px solid",
-              borderColor: "info.main",
-            }}
-          >
-            <MDTypography variant="caption" color="info.dark" display="block" mb={1}>
+          <div className="mt-6 rounded-xl border border-primary-200 bg-primary-50 p-4">
+            <MDTypography variant="caption" className="mb-1 block font-medium text-primary-900">
               <strong>¿No recibiste el email?</strong>
             </MDTypography>
-            <MDTypography variant="caption" color="info.dark">
+            <MDTypography variant="caption" className="text-primary-900/90">
               • Revisa tu carpeta de spam o correo no deseado
               <br />• Asegúrate de que el email sea correcto
               <br />• Espera unos minutos y haz clic en &quot;Reenviar Email de Verificación&quot;
             </MDTypography>
-          </MDBox>
+          </div>
         )}
       </MDBox>
 

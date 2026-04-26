@@ -1,38 +1,105 @@
-import { DashboardLayout, DashboardNavbar, Footer, DataTable } from "shared/components/layout";
-import { MDBox, MDTypography, MDButton, MDSnackbar } from "shared/components/md-shims";
-// src/layouts/admin-fields/index.js
+import { useState, useMemo } from "react";
+import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { useEffect } from "react";
+import {
+  DashboardLayout,
+  DashboardNavbar,
+  Footer,
+} from "shared/components/layout";
+import {
+  PageHeader,
+  SectionCard,
+  Button,
+  StatusPill,
+  Toast,
+} from "shared/components/ui";
+import {
+  Search,
+  CircleCheck,
+  X,
+  Hourglass,
+  Ban,
+  Trophy,
+} from "lucide-react";
+import useDebounce from "shared/hooks/useDebounce";
+import { db, callApproveFieldRequest } from "shared/services/firebaseService";
+import ConfirmationDialog from "features/users/pages/admin-users/components/ConfirmationDialog";
 
-import { useState } from "react";
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-import usePendingFieldsTableData from "./data/pendingFieldsTableData";
-import TableToolbar from "../../components/TableToolbar";
-import ConfirmationDialog from "layouts/admin-users/components/ConfirmationDialog";
-import { CircularProgress } from "@mui/material";
-import { callApproveFieldRequest } from "shared/services/firebaseService";
+const STATUS_FILTERS = [
+  { value: "pending", label: "Pendientes", tone: "warning", Icon: Hourglass },
+  { value: "approved", label: "Aprobadas", tone: "success", Icon: CircleCheck },
+  { value: "rejected", label: "Rechazadas", tone: "danger", Icon: X },
+  { value: "disabled", label: "Deshabilitadas", tone: "neutral", Icon: Ban },
+  { value: "all", label: "Todas", tone: "info", Icon: Trophy },
+];
+
+const STATUS_LABEL = {
+  approved: { label: "Aprobada", tone: "success" },
+  pending: { label: "Pendiente", tone: "warning" },
+  rejected: { label: "Rechazada", tone: "danger" },
+  disabled: { label: "Deshabilitada", tone: "neutral" },
+};
 
 function AdminFields() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("pending");
+  const [fields, setFields] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [fieldToApprove, setFieldToApprove] = useState(null);
-  const [confirmAction, setConfirmAction] = useState(""); // "approve" o "reject"
+  const [confirmAction, setConfirmAction] = useState("");
   const [loadingAction, setLoadingAction] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, color: "info", message: "" });
-  const [pageSize, setPageSize] = useState(10);
-  const entriesOptions = [10, 25, 50];
+  const [toast, setToast] = useState({ open: false, type: "info", message: "" });
 
-  // --- Manejadores de Acciones ---
-  const handleApprove = (field) => {
-    setFieldToApprove(field);
-    setConfirmAction("approve");
-    setIsConfirmOpen(true);
-  };
+  useEffect(() => {
+    setLoading(true);
+    const q =
+      statusFilter === "all"
+        ? query(collection(db, "canchas"), orderBy("createdAt", "desc"))
+        : query(collection(db, "canchas"), where("status", "==", statusFilter));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        if (statusFilter !== "all") {
+          data.sort(
+            (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
+          );
+        }
+        setFields(data);
+        setLoading(false);
+      },
+      () => {
+        setFields([]);
+        setLoading(false);
+        setToast({ open: true, type: "error", message: "Error al cargar canchas." });
+      }
+    );
+    return () => unsub();
+  }, [statusFilter]);
 
-  const handleReject = (field) => {
+  const filtered = useMemo(() => {
+    if (!debouncedSearch) return fields;
+    const q = debouncedSearch.toLowerCase();
+    return fields.filter(
+      (f) =>
+        f.name?.toLowerCase().includes(q) || f.address?.toLowerCase().includes(q)
+    );
+  }, [fields, debouncedSearch]);
+
+  const counts = useMemo(() => {
+    const acc = { pending: 0, approved: 0, rejected: 0, disabled: 0, all: fields.length };
+    fields.forEach((f) => {
+      if (acc[f.status] !== undefined) acc[f.status] += 1;
+    });
+    return acc;
+  }, [fields]);
+
+  const handleAction = (field, action) => {
     setFieldToApprove(field);
-    setConfirmAction("reject");
+    setConfirmAction(action);
     setIsConfirmOpen(true);
   };
 
@@ -42,108 +109,216 @@ function AdminFields() {
     setLoadingAction(true);
     try {
       const result = await callApproveFieldRequest(fieldToApprove.id, confirmAction);
-      setSnackbar({ open: true, color: "success", message: result.message });
+      setToast({ open: true, type: "success", message: result.message });
       setFieldToApprove(null);
     } catch (error) {
-      setSnackbar({ open: true, color: "error", message: error.message });
+      setToast({ open: true, type: "error", message: error.message });
     } finally {
       setLoadingAction(false);
     }
   };
 
-  // Hook de datos, pasando los manejadores de acción
-  const { columns, rows, loading, error } = usePendingFieldsTableData(
-    searchTerm,
-    statusFilter,
-    handleApprove,
-    handleReject
-  );
-
-  const closeSnackbar = () => setSnackbar({ ...snackbar, open: false });
-
-  // --- Renderizado del Componente ---
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <MDBox pt={6} pb={3}>
-        <Grid container spacing={6}>
-          <Grid item xs={12}>
-            <Card>
-              {/* Cabecera de la Tarjeta */}
-              <MDBox
-                mx={2}
-                mt={-3}
-                py={2}
-                px={2}
-                variant="gradient"
-                bgColor="info"
-                borderRadius="lg"
-                coloredShadow="info"
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
+
+      <PageHeader
+        eyebrow="Administración · Canchas"
+        title="Aprobación de canchas"
+        subtitle="Modera el catálogo: revisa, aprueba o rechaza nuevas solicitudes."
+      />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 mb-6">
+        {STATUS_FILTERS.map((s) => {
+          const active = statusFilter === s.value;
+          const Icon = s.Icon;
+          return (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => setStatusFilter(s.value)}
+              className={[
+                "relative rounded-xl border p-4 text-left transition-all duration-200 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
+                active
+                  ? "bg-primary text-white border-primary shadow-md"
+                  : "bg-white border-slate-200 hover:border-primary/30 hover:shadow-sm",
+              ].join(" ")}
+            >
+              <div className="flex items-center justify-between">
+                <span
+                  className={[
+                    "inline-flex items-center justify-center w-8 h-8 rounded-lg",
+                    active ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600",
+                  ].join(" ")}
+                >
+                  <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+                </span>
+                <span
+                  className={[
+                    "text-2xl font-semibold font-heading leading-none",
+                    active ? "text-white" : "text-slate-900",
+                  ].join(" ")}
+                >
+                  {counts[s.value] ?? 0}
+                </span>
+              </div>
+              <p
+                className={[
+                  "mt-3 text-xs font-semibold uppercase tracking-[0.1em]",
+                  active ? "text-white/80" : "text-slate-500",
+                ].join(" ")}
               >
-                <MDTypography variant="h6" color="white">
-                  Aprobación de Canchas
-                </MDTypography>
-              </MDBox>
+                {s.label}
+              </p>
+            </button>
+          );
+        })}
+      </div>
 
-              {/* Barra de Herramientas */}
-              <TableToolbar
-                searchTerm={searchTerm}
-                onSearchChange={(e) => setSearchTerm(e.target.value)}
-                statusFilter={statusFilter}
-                onStatusChange={(newStatus) => {
-                  if (newStatus) setStatusFilter(newStatus);
-                }}
-                entriesPerPage={pageSize}
-                onEntriesChange={setPageSize}
-                entriesOptions={entriesOptions}
-              />
+      <SectionCard padding="p-0">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1">
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o dirección..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-11 pl-11 pr-4 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 transition-all duration-200 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/20"
+            />
+          </div>
+          <p className="text-sm text-slate-500">
+            {filtered.length} {filtered.length === 1 ? "resultado" : "resultados"}
+          </p>
+        </div>
 
-              {/* Contenedor de la Tabla */}
-              <MDBox>
-                {loading ? (
-                  <MDBox display="flex" justifyContent="center" p={3}>
-                    <CircularProgress color="info" />
-                  </MDBox>
-                ) : error ? (
-                  <MDBox p={3} textAlign="center">
-                    <MDTypography variant="h6" color="error" mb={1}>
-                      Error al cargar canchas
-                    </MDTypography>
-                    <MDTypography variant="body2" color="text">
-                      {error}
-                    </MDTypography>
-                    <MDButton
-                      variant="gradient"
-                      color="info"
-                      size="small"
-                      onClick={() => window.location.reload()}
-                      sx={{ mt: 2 }}
-                    >
-                      Recargar página
-                    </MDButton>
-                  </MDBox>
-                ) : (
-                  <DataTable
-                    table={{ columns, rows }}
-                    isSorted={false}
-                    entriesPerPage={false}
-                    showTotalEntries
-                    noEndBorder
-                    canSearch={false}
-                    initialState={{ pageSize: pageSize }}
-                  />
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+        {loading ? (
+          <div className="p-12 text-center text-sm text-slate-500">Cargando canchas...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-primary-50 text-primary mx-auto mb-3 flex items-center justify-center">
+              <Trophy className="h-7 w-7" strokeWidth={2} aria-hidden />
+            </div>
+            <p className="text-base font-semibold font-heading text-slate-900">
+              No hay canchas
+            </p>
+            <p className="text-sm text-slate-500 mt-1">
+              {searchTerm
+                ? `No se encontraron resultados para "${searchTerm}".`
+                : "No hay canchas con este estado."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-[11px] uppercase tracking-[0.1em] text-slate-500">
+                  <th className="text-left font-semibold px-5 py-3">Cancha</th>
+                  <th className="text-left font-semibold px-5 py-3 hidden md:table-cell">
+                    Dirección
+                  </th>
+                  <th className="text-right font-semibold px-5 py-3 hidden lg:table-cell">
+                    Precio
+                  </th>
+                  <th className="text-left font-semibold px-5 py-3">Estado</th>
+                  <th className="text-left font-semibold px-5 py-3 hidden lg:table-cell">
+                    Creada
+                  </th>
+                  <th className="text-right font-semibold px-5 py-3">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((field) => {
+                  const st = STATUS_LABEL[field.status] || {
+                    label: field.status,
+                    tone: "neutral",
+                  };
+                  const created = field.createdAt?.seconds
+                    ? new Date(field.createdAt.seconds * 1000).toLocaleDateString()
+                    : "—";
+                  return (
+                    <tr key={field.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-primary-50 to-secondary/10 flex items-center justify-center text-primary">
+                            {field.imageUrl ? (
+                              <img
+                                src={field.imageUrl}
+                                alt=""
+                                className="w-full h-full rounded-lg object-cover"
+                              />
+                            ) : (
+                              <Trophy className="h-5 w-5" strokeWidth={2} aria-hidden />
+                            )}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">
+                              {field.name || "Sin nombre"}
+                            </p>
+                            <p className="md:hidden text-xs text-slate-500 truncate">
+                              {field.address || "Sin dirección"}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-slate-600 hidden md:table-cell max-w-xs truncate">
+                        {field.address || "Sin dirección"}
+                      </td>
+                      <td className="px-5 py-4 text-right font-semibold text-slate-900 hidden lg:table-cell">
+                        ${field.pricePerHour || 0}
+                        <span className="ml-1 text-xs font-normal text-slate-400">/h</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusPill tone={st.tone} size="sm">
+                          {st.label}
+                        </StatusPill>
+                      </td>
+                      <td className="px-5 py-4 text-slate-500 hidden lg:table-cell">
+                        {created}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          {field.status === "pending" ? (
+                            <>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                disabled={loadingAction}
+                                onClick={() => handleAction(field, "approve")}
+                              >
+                                <CircleCheck className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                                Aprobar
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                disabled={loadingAction}
+                                onClick={() => handleAction(field, "reject")}
+                              >
+                                <X className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                                Rechazar
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+
       <Footer />
 
-      {/* Diálogo de Confirmación */}
       <ConfirmationDialog
         open={isConfirmOpen}
         onClose={() => {
@@ -151,22 +326,18 @@ function AdminFields() {
           setFieldToApprove(null);
         }}
         onConfirm={confirmActionHandler}
-        title={`Confirmar ${confirmAction === "approve" ? "Aprobación" : "Rechazo"}`}
+        title={`Confirmar ${confirmAction === "approve" ? "aprobación" : "rechazo"}`}
         message={`¿Estás seguro de que quieres ${
           confirmAction === "approve" ? "aprobar" : "rechazar"
         } la cancha "${fieldToApprove?.name || ""}"?`}
+        confirmColor={confirmAction === "approve" ? "success" : "error"}
       />
 
-      {/* Snackbar */}
-      <MDSnackbar
-        color={snackbar.color}
-        icon={snackbar.color === "success" ? "check" : "warning"}
-        title="Aprobación de Canchas"
-        content={snackbar.message}
-        open={snackbar.open}
-        onClose={closeSnackbar}
-        close={closeSnackbar}
-        bgWhite={snackbar.color !== "info" && snackbar.color !== "dark"}
+      <Toast
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((t) => ({ ...t, open: false }))}
       />
     </DashboardLayout>
   );

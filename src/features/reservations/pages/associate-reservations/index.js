@@ -1,9 +1,5 @@
-import { DashboardLayout, DashboardNavbar, Footer, DataTable } from "shared/components/layout";
-import { Toast } from "shared/components/ui";
-import { MDBox, MDTypography, MDButton } from "shared/components/md-shims";
-// src/features/reservations/pages/associate-reservations/index.js
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import PropTypes from "prop-types";
 import {
   collection,
   query,
@@ -16,6 +12,41 @@ import {
   serverTimestamp as firestoreServerTimestamp,
 } from "firebase/firestore";
 import {
+  DashboardLayout,
+  DashboardNavbar,
+  Footer,
+} from "shared/components/layout";
+import {
+  PageHeader,
+  SectionCard,
+  StatusPill,
+  Button,
+  StatCard,
+  Modal,
+  Toast,
+  SelectField,
+  Textarea,
+} from "shared/components/ui";
+import {
+  Search,
+  Eye,
+  Pencil,
+  Check,
+  X,
+  Calendar,
+  Clock,
+  MapPin,
+  User,
+  Mail,
+  Banknote,
+  Trophy,
+  CalendarOff,
+  Hourglass,
+  CircleCheck,
+  XCircle,
+  Save,
+} from "lucide-react";
+import {
   db,
   notifyReservationConfirmed,
   notifyReservationCancelled,
@@ -26,23 +57,34 @@ import {
 import { useAuth } from "shared/context/AuthContext";
 import ConfirmationDialog from "features/users/pages/admin-users/components/ConfirmationDialog";
 
-// MUI components that work well (keeping for now)
-import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem";
-import Chip from "@mui/material/Chip";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
-import TextField from "@mui/material/TextField";
-import Select from "@mui/material/Select";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import Divider from "@mui/material/Divider";
-import CircularProgress from "@mui/material/CircularProgress";
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
+const STATUS = {
+  pending: { label: "Pendiente", tone: "warning" },
+  confirmed: { label: "Confirmada", tone: "success" },
+  cancelled: { label: "Cancelada", tone: "danger" },
+  completed: { label: "Completada", tone: "info" },
+};
+
+const FILTERS = [
+  { value: "all", label: "Todas" },
+  { value: "pending", label: "Pendientes" },
+  { value: "confirmed", label: "Confirmadas" },
+  { value: "completed", label: "Completadas" },
+  { value: "cancelled", label: "Canceladas" },
+];
+
+function formatDate(value) {
+  if (!value) return "—";
+  const d = value.seconds
+    ? new Date(value.seconds * 1000)
+    : value.toDate
+    ? value.toDate()
+    : new Date(value);
+  return d.toLocaleDateString("es-ES", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
 
 function AssociateReservations() {
   const { userProfile, currentUser } = useAuth();
@@ -50,185 +92,126 @@ function AssociateReservations() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [filterMenu, setFilterMenu] = useState(null);
+  const [clientsMap, setClientsMap] = useState({});
+
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState(""); // "approve" o "reject"
+  const [confirmAction, setConfirmAction] = useState("");
   const [loadingAction, setLoadingAction] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, color: "info", message: "" });
+  const [toast, setToast] = useState({ open: false, type: "info", message: "" });
+
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [clientInfo, setClientInfo] = useState(null);
   const [loadingClientInfo, setLoadingClientInfo] = useState(false);
-  const [clientsMap, setClientsMap] = useState({}); // Mapa de clientId -> nombre del cliente
+
   const [isChangeStatusModalOpen, setIsChangeStatusModalOpen] = useState(false);
   const [newStatus, setNewStatus] = useState("");
   const [statusChangeReason, setStatusChangeReason] = useState("");
   const [changingStatus, setChangingStatus] = useState(false);
 
-  // Obtener las canchas del asociado primero
   useEffect(() => {
     if (!currentUser || userProfile?.role !== "asociado") {
       setLoading(false);
-      return;
+      return undefined;
     }
-
     setLoading(true);
 
-    // Obtener las canchas del asociado
-    const fieldsQuery = query(collection(db, "canchas"), where("ownerId", "==", currentUser.uid));
+    const fieldsQuery = query(
+      collection(db, "canchas"),
+      where("ownerId", "==", currentUser.uid)
+    );
 
-    const unsubscribeFields = onSnapshot(fieldsQuery, (fieldsSnapshot) => {
-      const fieldIds = fieldsSnapshot.docs.map((doc) => doc.id);
-
+    let unsubReservations = null;
+    const unsubFields = onSnapshot(fieldsQuery, (fieldsSnap) => {
+      const fieldIds = fieldsSnap.docs.map((d) => d.id);
+      if (unsubReservations) unsubReservations();
       if (fieldIds.length === 0) {
         setReservations([]);
         setLoading(false);
         return;
       }
-
-      // Obtener todas las reservas y filtrar por las canchas del asociado
-      const reservationsQuery = query(collection(db, "reservations"), orderBy("createdAt", "desc"));
-
-      const unsubscribeReservations = onSnapshot(
+      const reservationsQuery = query(
+        collection(db, "reservations"),
+        orderBy("createdAt", "desc")
+      );
+      unsubReservations = onSnapshot(
         reservationsQuery,
-        (reservationsSnapshot) => {
-          let reservationsData = reservationsSnapshot.docs
-            .map((doc) => ({
-              id: doc.id,
-              ...doc.data(),
-            }))
-            .filter((reservation) => fieldIds.includes(reservation.fieldId));
-
-          // Aplicar filtro de búsqueda
-          if (searchTerm) {
-            const lowercasedFilter = searchTerm.toLowerCase();
-            reservationsData = reservationsData.filter(
-              (reservation) =>
-                (reservation.fieldName &&
-                  reservation.fieldName.toLowerCase().includes(lowercasedFilter)) ||
-                (reservation.fieldAddress &&
-                  reservation.fieldAddress.toLowerCase().includes(lowercasedFilter)) ||
-                (reservation.clientName &&
-                  reservation.clientName.toLowerCase().includes(lowercasedFilter))
-            );
-          }
-
-          // Aplicar filtro de estado
-          if (statusFilter !== "all") {
-            reservationsData = reservationsData.filter(
-              (reservation) => reservation.status === statusFilter
-            );
-          }
-
-          // Ordenar por fecha de creación (más reciente primero)
-          reservationsData.sort((a, b) => {
-            const aTime = a.createdAt?.seconds || 0;
-            const bTime = b.createdAt?.seconds || 0;
-            return bTime - aTime;
-          });
-
-          // Obtener información de clientes únicos
-          const uniqueClientIds = [
-            ...new Set(reservationsData.map((r) => r.clientId).filter((id) => id)),
-          ];
-
-          // Obtener nombres de clientes que no están en el mapa
-          const clientIdsToFetch = uniqueClientIds.filter(
-            (id) => !clientsMap[id] && !reservationsData.find((r) => r.clientId === id)?.clientName
-          );
-
-          // Función async para obtener nombres de clientes
-          const fetchClientNames = async () => {
-            if (clientIdsToFetch.length > 0) {
-              const clientPromises = clientIdsToFetch.map(async (clientId) => {
-                try {
-                  const clientDoc = await getDoc(doc(db, "users", clientId));
-                  if (clientDoc.exists()) {
-                    return { id: clientId, name: clientDoc.data().name || "Cliente" };
-                  }
-                  return { id: clientId, name: "Cliente" };
-                } catch (error) {
-                  console.error(`Error al obtener cliente ${clientId}:`, error);
-                  return { id: clientId, name: "Cliente" };
-                }
-              });
-
-              const clientData = await Promise.all(clientPromises);
-              const newClientsMap = { ...clientsMap };
-              clientData.forEach((client) => {
-                newClientsMap[client.id] = client.name;
-              });
-              setClientsMap(newClientsMap);
-            }
-          };
-
-          // Ejecutar la obtención de nombres de clientes sin bloquear
-          fetchClientNames().catch((error) => {
-            console.error("Error al obtener nombres de clientes:", error);
-          });
-
-          setReservations(reservationsData);
+        (snap) => {
+          const data = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((r) => fieldIds.includes(r.fieldId));
+          setReservations(data);
           setLoading(false);
+
+          const uniqueClientIds = [
+            ...new Set(data.map((r) => r.clientId).filter(Boolean)),
+          ];
+          const toFetch = uniqueClientIds.filter(
+            (id) =>
+              !clientsMap[id] && !data.find((r) => r.clientId === id)?.clientName
+          );
+          if (toFetch.length > 0) {
+            (async () => {
+              const results = await Promise.all(
+                toFetch.map(async (id) => {
+                  try {
+                    const cd = await getDoc(doc(db, "users", id));
+                    return { id, name: cd.exists() ? cd.data().name || "Cliente" : "Cliente" };
+                  } catch {
+                    return { id, name: "Cliente" };
+                  }
+                })
+              );
+              setClientsMap((prev) => {
+                const next = { ...prev };
+                results.forEach((c) => {
+                  next[c.id] = c.name;
+                });
+                return next;
+              });
+            })();
+          }
         },
-        (error) => {
-          console.error("Error al obtener reservas:", error);
+        () => {
           setReservations([]);
           setLoading(false);
         }
       );
-
-      return () => unsubscribeReservations();
     });
 
-    return () => unsubscribeFields();
-  }, [currentUser, userProfile, searchTerm, statusFilter]);
-
-  const openFilterMenu = (event) => setFilterMenu(event.currentTarget);
-  const closeFilterMenu = () => setFilterMenu(null);
-
-  const handleFilterSelect = (status) => {
-    setStatusFilter(status);
-    closeFilterMenu();
-  };
-
-  const getStatusColor = (status) => {
-    const statusMap = {
-      pending: "warning",
-      confirmed: "success",
-      cancelled: "error",
-      completed: "info",
+    return () => {
+      unsubFields();
+      if (unsubReservations) unsubReservations();
     };
-    return statusMap[status] || "default";
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, userProfile]);
 
-  const getStatusText = (status) => {
-    const statusMap = {
-      pending: "Pendiente",
-      confirmed: "Confirmada",
-      cancelled: "Cancelada",
-      completed: "Completada",
-    };
-    return statusMap[status] || status;
-  };
+  const filtered = useMemo(() => {
+    let list = [...reservations];
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.fieldName?.toLowerCase().includes(q) ||
+          r.fieldAddress?.toLowerCase().includes(q) ||
+          r.clientName?.toLowerCase().includes(q)
+      );
+    }
+    if (statusFilter !== "all") {
+      list = list.filter((r) => r.status === statusFilter);
+    }
+    return list;
+  }, [reservations, searchTerm, statusFilter]);
 
-  const formatDate = (dateValue) => {
-    if (!dateValue) return "N/A";
-    const date = dateValue.seconds
-      ? new Date(dateValue.seconds * 1000)
-      : dateValue.toDate
-      ? dateValue.toDate()
-      : new Date(dateValue);
-    return date.toLocaleDateString("es-ES", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-
-  const formatTime = (timeValue) => {
-    if (!timeValue) return "N/A";
-    return timeValue;
-  };
+  const counts = useMemo(
+    () => ({
+      total: reservations.length,
+      pending: reservations.filter((r) => r.status === "pending").length,
+      confirmed: reservations.filter((r) => r.status === "confirmed").length,
+      cancelled: reservations.filter((r) => r.status === "cancelled").length,
+    }),
+    [reservations]
+  );
 
   const handleApprove = (reservation) => {
     setSelectedReservation(reservation);
@@ -246,17 +229,11 @@ function AssociateReservations() {
     setSelectedReservation(reservation);
     setLoadingClientInfo(true);
     setIsDetailsModalOpen(true);
-
-    // Obtener información del cliente
     try {
       if (reservation.clientId) {
-        const clientDoc = await getDoc(doc(db, "users", reservation.clientId));
-        if (clientDoc.exists()) {
-          setClientInfo(clientDoc.data());
-        }
+        const cd = await getDoc(doc(db, "users", reservation.clientId));
+        if (cd.exists()) setClientInfo(cd.data());
       }
-    } catch (error) {
-      console.error("Error al obtener información del cliente:", error);
     } finally {
       setLoadingClientInfo(false);
     }
@@ -266,23 +243,20 @@ function AssociateReservations() {
     if (!selectedReservation) return;
     setIsConfirmOpen(false);
     setLoadingAction(true);
-
     try {
-      // Si se está aprobando, validar que no haya conflictos
       if (confirmAction === "approve") {
         const conflictCheck = await checkReservationConflict(
           selectedReservation.fieldId,
           selectedReservation.date,
           selectedReservation.startTime,
           selectedReservation.endTime,
-          selectedReservation.id // Excluir la reserva actual
+          selectedReservation.id
         );
-
         if (conflictCheck.hasConflict) {
-          setSnackbar({
+          setToast({
             open: true,
-            color: "error",
-            message: `No se puede aprobar esta reserva. El horario (${selectedReservation.startTime} - ${selectedReservation.endTime}) ya está ocupado por otra reserva confirmada de ${conflictCheck.conflictingReservation.clientName}.`,
+            type: "error",
+            message: `No se puede aprobar. El horario ya está ocupado por ${conflictCheck.conflictingReservation.clientName}.`,
           });
           setLoadingAction(false);
           return;
@@ -290,16 +264,14 @@ function AssociateReservations() {
       }
 
       const reservationRef = doc(db, "reservations", selectedReservation.id);
-      const newStatus = confirmAction === "approve" ? "confirmed" : "cancelled";
-
+      const status = confirmAction === "approve" ? "confirmed" : "cancelled";
       await updateDoc(reservationRef, {
-        status: newStatus,
+        status,
         updatedAt: firestoreServerTimestamp(),
         reviewedAt: firestoreServerTimestamp(),
         reviewedBy: currentUser.uid,
       });
 
-      // Crear notificación para el cliente
       try {
         if (confirmAction === "approve") {
           await notifyReservationConfirmed(
@@ -314,23 +286,20 @@ function AssociateReservations() {
             selectedReservation.clientId
           );
         }
-      } catch (notificationError) {
-        console.error("Error al crear notificación:", notificationError);
-        // No fallar la operación principal si la notificación falla
+      } catch {
+        /* notifications non-critical */
       }
 
-      const actionText = confirmAction === "approve" ? "confirmada" : "rechazada";
-      setSnackbar({
+      setToast({
         open: true,
-        color: "success",
-        message: `Reserva ${actionText} exitosamente.`,
+        type: "success",
+        message: `Reserva ${confirmAction === "approve" ? "confirmada" : "rechazada"} exitosamente.`,
       });
       setSelectedReservation(null);
     } catch (error) {
-      console.error("Error al actualizar reserva:", error);
-      setSnackbar({
+      setToast({
         open: true,
-        color: "error",
+        type: "error",
         message: error.message || "Error al procesar la reserva.",
       });
     } finally {
@@ -338,133 +307,103 @@ function AssociateReservations() {
     }
   };
 
-  const closeSnackbar = () => setSnackbar({ ...snackbar, open: false });
+  const handleStatusSubmit = async () => {
+    if (!selectedReservation || !newStatus) return;
+    if (selectedReservation.status === newStatus) {
+      setToast({ open: true, type: "warning", message: "La reserva ya está en ese estado." });
+      return;
+    }
 
-  // Preparar datos para la tabla
-  const columns = [
-    { Header: "cancha", accessor: "cancha", width: "20%", align: "left" },
-    { Header: "cliente", accessor: "cliente", width: "15%", align: "left" },
-    { Header: "fecha", accessor: "fecha", align: "center" },
-    { Header: "hora", accessor: "hora", align: "center" },
-    { Header: "precio", accessor: "precio", align: "center" },
-    { Header: "estado", accessor: "estado", align: "center" },
-    { Header: "acciones", accessor: "acciones", align: "center" },
-  ];
+    setChangingStatus(true);
+    try {
+      await updateReservationStatus(
+        selectedReservation.id,
+        newStatus,
+        statusChangeReason,
+        currentUser.uid
+      );
 
-  const rows = reservations.map((reservation) => ({
-    cancha: (
-      <MDBox>
-        <MDTypography variant="button" fontWeight="medium">
-          {reservation.fieldName || "Sin nombre"}
-        </MDTypography>
-        {reservation.fieldAddress && (
-          <MDTypography variant="caption" color="text" display="block">
-            {reservation.fieldAddress}
-          </MDTypography>
-        )}
-      </MDBox>
-    ),
-    cliente: (
-      <MDTypography variant="caption" color="text" fontWeight="medium">
-        {reservation.clientName || clientsMap[reservation.clientId] || "Cliente"}
-      </MDTypography>
-    ),
-    fecha: (
-      <MDTypography variant="caption" color="text" fontWeight="medium">
-        {formatDate(reservation.date)}
-      </MDTypography>
-    ),
-    hora: (
-      <MDTypography variant="caption" color="text">
-        {formatTime(reservation.startTime)} - {formatTime(reservation.endTime)}
-      </MDTypography>
-    ),
-    precio: (
-      <MDTypography variant="caption" color="success" fontWeight="bold">
-        ${reservation.totalPrice?.toLocaleString() || "0"}
-      </MDTypography>
-    ),
-    estado: (
-      <MDBox ml={-1}>
-        <Chip
-          label={getStatusText(reservation.status)}
-          color={getStatusColor(reservation.status)}
-          size="small"
-          sx={{ fontWeight: "bold" }}
-        />
-      </MDBox>
-    ),
-    acciones: (
-      <MDBox display="flex" gap={1} justifyContent="center">
-        <MDButton
-          variant="outlined"
-          color="info"
-          size="small"
-          onClick={() => handleViewDetails(reservation)}
-        >
-          <Icon fontSize="small" sx={{ mr: 0.5 }}>
-            visibility
-          </Icon>
-          Ver
-        </MDButton>
-        <MDButton
-          variant="outlined"
-          color="secondary"
-          size="small"
-          onClick={() => {
-            setSelectedReservation(reservation);
-            setNewStatus("");
-            setStatusChangeReason("");
-            setIsChangeStatusModalOpen(true);
-          }}
-          disabled={changingStatus}
-        >
-          <Icon fontSize="small" sx={{ mr: 0.5 }}>
-            edit
-          </Icon>
-          Cambiar Estado
-        </MDButton>
-        {reservation.status === "pending" && (
-          <>
-            <MDButton
-              variant="gradient"
-              color="success"
-              size="small"
-              onClick={() => handleApprove(reservation)}
-              disabled={loadingAction}
-            >
-              <Icon fontSize="small" sx={{ mr: 0.5 }}>
-                check
-              </Icon>
-              Aprobar
-            </MDButton>
-            <MDButton
-              variant="gradient"
-              color="error"
-              size="small"
-              onClick={() => handleReject(reservation)}
-              disabled={loadingAction}
-            >
-              <Icon fontSize="small" sx={{ mr: 0.5 }}>
-                close
-              </Icon>
-              Rechazar
-            </MDButton>
-          </>
-        )}
-      </MDBox>
-    ),
-  }));
+      let clientEmail = "";
+      let clientName = selectedReservation.clientName || "Cliente";
+      try {
+        if (selectedReservation.clientId) {
+          const cd = await getDoc(doc(db, "users", selectedReservation.clientId));
+          if (cd.exists()) {
+            clientEmail = cd.data().email || "";
+            clientName = cd.data().name || clientName;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        if (newStatus === "confirmed") {
+          await notifyReservationConfirmed(
+            selectedReservation.id,
+            selectedReservation.fieldName || "la cancha",
+            selectedReservation.clientId
+          );
+        } else if (newStatus === "cancelled") {
+          await notifyReservationCancelled(
+            selectedReservation.id,
+            selectedReservation.fieldName || "la cancha",
+            selectedReservation.clientId
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (clientEmail) {
+        try {
+          await sendReservationStatusChangeEmail(
+            { ...selectedReservation, previousStatus: selectedReservation.status },
+            newStatus,
+            statusChangeReason,
+            clientEmail,
+            clientName
+          );
+        } catch (emailError) {
+          setToast({
+            open: true,
+            type: "warning",
+            message: `Estado actualizado, pero no se pudo enviar el correo: ${emailError.message}`,
+          });
+        }
+      }
+
+      setToast({
+        open: true,
+        type: "success",
+        message: `Estado actualizado a "${STATUS[newStatus]?.label || newStatus}".`,
+      });
+
+      setIsChangeStatusModalOpen(false);
+      setNewStatus("");
+      setStatusChangeReason("");
+      setSelectedReservation(null);
+    } catch (error) {
+      setToast({
+        open: true,
+        type: "error",
+        message: error.message || "Error al cambiar el estado.",
+      });
+    } finally {
+      setChangingStatus(false);
+    }
+  };
 
   if (userProfile?.role !== "asociado") {
     return (
       <DashboardLayout>
         <DashboardNavbar />
-        <div className="py-6 px-4">
-          <h2 className="text-2xl font-bold text-red-600">
-            Acceso denegado. Solo los asociados pueden acceder a esta página.
+        <SectionCard>
+          <h2 className="text-2xl font-semibold font-heading text-rose-600 mb-2">
+            Acceso denegado
           </h2>
-        </div>
+          <p className="text-slate-600">Solo los asociados pueden acceder a esta página.</p>
+        </SectionCard>
         <Footer />
       </DashboardLayout>
     );
@@ -473,303 +412,319 @@ function AssociateReservations() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
-      <div className="p-4 md:p-6">
-        <h1 className="text-2xl font-bold text-dark mb-6">Gestión de Reservas</h1>
 
-        <div className="bg-white rounded-2xl shadow-card overflow-hidden">
-          {/* Header Card */}
-          <div className="bg-gradient-to-r from-goaltime to-green-400 p-4"></div>
+      <PageHeader
+        eyebrow="Asociado · Reservas"
+        title="Gestión de reservas"
+        subtitle="Aprueba, rechaza o cambia el estado de las reservas de tus canchas."
+      />
 
-          {/* Toolbar */}
-          <div className="p-4 flex gap-3 flex-wrap items-center">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard icon={Calendar} color="primary" title="Total" value={counts.total} subtitle="Reservas" />
+        <StatCard icon={Hourglass} color="warning" title="Pendientes" value={counts.pending} subtitle="Por revisar" />
+        <StatCard icon={CircleCheck} color="success" title="Confirmadas" value={counts.confirmed} subtitle="Activas" />
+        <StatCard icon={XCircle} color="danger" title="Canceladas" value={counts.cancelled} subtitle="Inactivas" />
+      </div>
+
+      <SectionCard padding="p-0">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center gap-3">
+          <div className="relative flex-1">
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+              strokeWidth={2}
+              aria-hidden
+            />
             <input
               type="text"
               placeholder="Buscar por cancha, cliente o dirección..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 min-w-[250px] px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-goaltime focus:border-transparent"
+              className="w-full h-11 pl-11 pr-4 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 transition-all duration-200 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/20"
             />
-            <button
-              onClick={openFilterMenu}
-              className="px-3 py-2 border border-goaltime text-goaltime rounded-lg hover:bg-goaltime-50 transition-colors"
-            >
-              <span className="material-icons">filter_list</span>
-            </button>
-            {/* Menu component remains MUI for now - works well */}
-            <Menu anchorEl={filterMenu} open={Boolean(filterMenu)} onClose={closeFilterMenu}>
-              <MenuItem onClick={() => handleFilterSelect("all")}>Todas</MenuItem>
-              <MenuItem onClick={() => handleFilterSelect("pending")}>Pendientes</MenuItem>
-              <MenuItem onClick={() => handleFilterSelect("confirmed")}>Confirmadas</MenuItem>
-              <MenuItem onClick={() => handleFilterSelect("cancelled")}>Canceladas</MenuItem>
-              <MenuItem onClick={() => handleFilterSelect("completed")}>Completadas</MenuItem>
-            </Menu>
           </div>
-
-          {/* Table Container */}
-          <div>
-            {loading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="w-10 h-10 border-4 border-goaltime border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            ) : (
-              <DataTable
-                table={{ columns, rows }}
-                isSorted={false}
-                entriesPerPage={false}
-                showTotalEntries
-                noEndBorder
-                canSearch={false}
-              />
-            )}
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map((opt) => {
+              const active = statusFilter === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setStatusFilter(opt.value)}
+                  className={[
+                    "h-9 px-3.5 rounded-lg text-sm font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
+                    active
+                      ? "bg-primary text-white border-primary shadow-sm"
+                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300",
+                  ].join(" ")}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </div>
+
+        {loading ? (
+          <div className="p-12 text-center text-sm text-slate-500">Cargando reservas...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-primary-50 text-primary mx-auto mb-3 flex items-center justify-center">
+              <CalendarOff className="h-7 w-7" strokeWidth={2} aria-hidden />
+            </div>
+            <p className="text-base font-semibold font-heading text-slate-900">
+              {reservations.length === 0 ? "Aún no tienes reservas" : "Sin resultados"}
+            </p>
+            <p className="text-sm text-slate-500 mt-1">
+              {reservations.length === 0
+                ? "Cuando los clientes reserven tus canchas aparecerán aquí."
+                : "Intenta ajustar los filtros."}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-[11px] uppercase tracking-[0.1em] text-slate-500">
+                  <th className="text-left font-semibold px-5 py-3">Cancha</th>
+                  <th className="text-left font-semibold px-5 py-3 hidden md:table-cell">
+                    Cliente
+                  </th>
+                  <th className="text-left font-semibold px-5 py-3 hidden lg:table-cell">
+                    Fecha
+                  </th>
+                  <th className="text-left font-semibold px-5 py-3 hidden lg:table-cell">
+                    Hora
+                  </th>
+                  <th className="text-right font-semibold px-5 py-3 hidden xl:table-cell">
+                    Total
+                  </th>
+                  <th className="text-left font-semibold px-5 py-3">Estado</th>
+                  <th className="text-right font-semibold px-5 py-3">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((r) => {
+                  const st = STATUS[r.status] || { label: r.status, tone: "neutral" };
+                  return (
+                    <tr key={r.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-primary-50 to-secondary/10 flex items-center justify-center text-primary">
+                            <Trophy className="h-5 w-5" strokeWidth={2} aria-hidden />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">
+                              {r.fieldName || "Sin nombre"}
+                            </p>
+                            <p className="text-xs text-slate-500 truncate">
+                              {r.fieldAddress || "Sin dirección"}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-slate-700 hidden md:table-cell">
+                        {r.clientName || clientsMap[r.clientId] || "Cliente"}
+                      </td>
+                      <td className="px-5 py-4 text-slate-600 hidden lg:table-cell">
+                        {formatDate(r.date)}
+                      </td>
+                      <td className="px-5 py-4 text-slate-600 hidden lg:table-cell">
+                        {r.startTime} – {r.endTime}
+                      </td>
+                      <td className="px-5 py-4 text-right font-semibold text-emerald-600 hidden xl:table-cell">
+                        ${r.totalPrice?.toLocaleString() || 0}
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusPill tone={st.tone} size="sm">
+                          {st.label}
+                        </StatusPill>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewDetails(r)}
+                          >
+                            <Eye className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                            Ver
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={changingStatus}
+                            onClick={() => {
+                              setSelectedReservation(r);
+                              setNewStatus("");
+                              setStatusChangeReason("");
+                              setIsChangeStatusModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                            Estado
+                          </Button>
+                          {r.status === "pending" && (
+                            <>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                disabled={loadingAction}
+                                onClick={() => handleApprove(r)}
+                              >
+                                <Check className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                                Aprobar
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                disabled={loadingAction}
+                                onClick={() => handleReject(r)}
+                              >
+                                <X className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                                Rechazar
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+
       <Footer />
 
-      {/* Diálogo de Confirmación */}
-      <ConfirmationDialog
-        open={isConfirmOpen}
-        onClose={() => {
-          setIsConfirmOpen(false);
-          setSelectedReservation(null);
-        }}
-        onConfirm={confirmActionHandler}
-        title={`Confirmar ${confirmAction === "approve" ? "Aprobación" : "Rechazo"}`}
-        message={`¿Estás seguro de que quieres ${
-          confirmAction === "approve" ? "aprobar" : "rechazar"
-        } la reserva para "${selectedReservation?.fieldName || ""}"?`}
-        confirmColor={confirmAction === "approve" ? "success" : "error"}
-      />
-
-      {/* Modal de Detalles */}
-      <Dialog
+      {/* Modal de detalles */}
+      <Modal
         open={isDetailsModalOpen}
-        onClose={() => setIsDetailsModalOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <MDBox
-          component={DialogTitle}
-          bgColor="info"
-          variant="gradient"
-          p={2.5}
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-        >
-          <MDTypography variant="h5" color="white" fontWeight="bold">
-            <Icon sx={{ verticalAlign: "middle", mr: 1 }}>event</Icon>
-            Detalles de la Reserva
-          </MDTypography>
-          {selectedReservation && (
-            <Chip
-              label={getStatusText(selectedReservation.status)}
-              color={getStatusColor(selectedReservation.status)}
-              sx={{ color: "white", fontWeight: "bold" }}
-            />
-          )}
-        </MDBox>
-
-        <DialogContent sx={{ p: 3 }}>
-          {selectedReservation && (
-            <Grid container spacing={3}>
-              {/* Información del Cliente */}
-              <Grid item xs={12}>
-                <Card>
-                  <MDBox p={2.5} borderRadius="lg" bgColor="info" variant="gradient" mb={2}>
-                    <MDTypography variant="h6" color="white" fontWeight="bold">
-                      <Icon sx={{ verticalAlign: "middle", mr: 1 }}>person</Icon>
-                      Información del Cliente
-                    </MDTypography>
-                  </MDBox>
-                  <MDBox p={2.5}>
-                    {loadingClientInfo ? (
-                      <CircularProgress />
-                    ) : clientInfo ? (
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6}>
-                          <MDBox display="flex" alignItems="center" mb={1.5}>
-                            <Icon sx={{ mr: 1 }}>badge</Icon>
-                            <MDBox>
-                              <MDTypography variant="caption">Nombre</MDTypography>
-                              <MDTypography variant="body2" fontWeight="bold">
-                                {clientInfo.name || "No disponible"}
-                              </MDTypography>
-                            </MDBox>
-                          </MDBox>
-                        </Grid>
-                        <Grid item xs={12} sm={6}>
-                          <MDBox display="flex" alignItems="center" mb={1.5}>
-                            <Icon sx={{ mr: 1 }}>email</Icon>
-                            <MDBox>
-                              <MDTypography variant="caption">Correo</MDTypography>
-                              <MDTypography variant="body2" fontWeight="bold">
-                                {clientInfo.email || "No disponible"}
-                              </MDTypography>
-                            </MDBox>
-                          </MDBox>
-                        </Grid>
-                        <Grid item xs={12}>
-                          <MDBox display="flex" alignItems="center">
-                            <Icon sx={{ mr: 1 }}>vpn_key</Icon>
-                            <MDBox>
-                              <MDTypography variant="caption">ID de Usuario</MDTypography>
-                              <MDTypography variant="caption" sx={{ wordBreak: "break-all" }}>
-                                {selectedReservation.clientId}
-                              </MDTypography>
-                            </MDBox>
-                          </MDBox>
-                        </Grid>
-                      </Grid>
-                    ) : (
-                      <MDTypography>No se pudo cargar la información del cliente</MDTypography>
-                    )}
-                  </MDBox>
-                </Card>
-              </Grid>
-
-              {/* Información de la Reserva */}
-              <Grid item xs={12}>
-                <MDTypography variant="h6" fontWeight="bold" mb={2}>
-                  <Icon sx={{ verticalAlign: "middle", mr: 1 }}>event_available</Icon>
-                  Información de la Reserva
-                </MDTypography>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <MDBox mb={2}>
-                  <MDTypography variant="caption" color="text" fontWeight="medium">
-                    <Icon sx={{ verticalAlign: "middle", mr: 0.5, fontSize: "1rem" }}>
-                      sports_soccer
-                    </Icon>
-                    Cancha
-                  </MDTypography>
-                  <MDTypography variant="body1" fontWeight="bold">
-                    {selectedReservation.fieldName || "No especificado"}
-                  </MDTypography>
-                </MDBox>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <MDBox mb={2}>
-                  <MDTypography variant="caption" color="text" fontWeight="medium">
-                    <Icon sx={{ verticalAlign: "middle", mr: 0.5, fontSize: "1rem" }}>
-                      location_on
-                    </Icon>
-                    Dirección
-                  </MDTypography>
-                  <MDTypography variant="body1">
-                    {selectedReservation.fieldAddress || "No especificada"}
-                  </MDTypography>
-                </MDBox>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <MDBox mb={2}>
-                  <MDTypography variant="caption" color="text" fontWeight="medium">
-                    <Icon sx={{ verticalAlign: "middle", mr: 0.5, fontSize: "1rem" }}>
-                      calendar_today
-                    </Icon>
-                    Fecha
-                  </MDTypography>
-                  <MDTypography variant="body1" fontWeight="bold">
-                    {formatDate(selectedReservation.date)}
-                  </MDTypography>
-                </MDBox>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <MDBox mb={2}>
-                  <MDTypography variant="caption" color="text" fontWeight="medium">
-                    <Icon sx={{ verticalAlign: "middle", mr: 0.5, fontSize: "1rem" }}>
-                      schedule
-                    </Icon>
-                    Horario
-                  </MDTypography>
-                  <MDTypography variant="body1" fontWeight="bold">
-                    {formatTime(selectedReservation.startTime)} -{" "}
-                    {formatTime(selectedReservation.endTime)}
-                  </MDTypography>
-                </MDBox>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <MDBox mb={2}>
-                  <MDTypography variant="caption" color="text" fontWeight="medium">
-                    <Icon sx={{ verticalAlign: "middle", mr: 0.5, fontSize: "1rem" }}>
-                      payments
-                    </Icon>
-                    Precio Total
-                  </MDTypography>
-                  <MDTypography variant="h6" color="success" fontWeight="bold">
-                    ${selectedReservation.totalPrice?.toLocaleString() || "0"}
-                  </MDTypography>
-                </MDBox>
-              </Grid>
-
-              {selectedReservation.createdAt && (
-                <Grid item xs={12}>
-                  <MDBox mb={2}>
-                    <MDTypography variant="caption" color="text" fontWeight="medium">
-                      <Icon sx={{ verticalAlign: "middle", mr: 0.5, fontSize: "1rem" }}>
-                        access_time
-                      </Icon>
-                      Fecha de Creación
-                    </MDTypography>
-                    <MDTypography variant="body2" color="text">
-                      {formatDate(selectedReservation.createdAt)}
-                    </MDTypography>
-                  </MDBox>
-                </Grid>
-              )}
-            </Grid>
-          )}
-        </DialogContent>
-
-        <DialogActions sx={{ p: 3, pt: 2 }}>
-          <MDButton
-            onClick={() => setIsDetailsModalOpen(false)}
-            color="secondary"
-            variant="outlined"
-          >
-            <Icon sx={{ mr: 1 }}>close</Icon>
-            Cerrar
-          </MDButton>
-          {selectedReservation?.status === "pending" && (
+        onClose={() => {
+          setIsDetailsModalOpen(false);
+          setClientInfo(null);
+        }}
+        size="2xl"
+        variant="hero"
+        eyebrow="Asociado · Reservas"
+        title="Detalles de la reserva"
+        subtitle={selectedReservation?.fieldName || ""}
+        icon={<Calendar className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />}
+        footer={
+          selectedReservation?.status === "pending" ? (
             <>
-              <MDButton
-                variant="gradient"
-                color="success"
-                onClick={() => {
-                  setIsDetailsModalOpen(false);
-                  handleApprove(selectedReservation);
-                }}
-                disabled={loadingAction}
-                sx={{ ml: 1 }}
+              <Button
+                variant="ghost"
+                onClick={() => setIsDetailsModalOpen(false)}
               >
-                <Icon sx={{ mr: 1 }}>check</Icon>
-                Aprobar Reserva
-              </MDButton>
-              <MDButton
-                variant="gradient"
-                color="error"
+                Cerrar
+              </Button>
+              <Button
+                variant="danger"
+                disabled={loadingAction}
                 onClick={() => {
                   setIsDetailsModalOpen(false);
                   handleReject(selectedReservation);
                 }}
-                disabled={loadingAction}
-                sx={{ ml: 1 }}
               >
-                <Icon sx={{ mr: 1 }}>close</Icon>
-                Rechazar Reserva
-              </MDButton>
+                <X className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+                Rechazar
+              </Button>
+              <Button
+                variant="primary"
+                disabled={loadingAction}
+                onClick={() => {
+                  setIsDetailsModalOpen(false);
+                  handleApprove(selectedReservation);
+                }}
+              >
+                <Check className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+                Aprobar
+              </Button>
             </>
-          )}
-        </DialogActions>
-      </Dialog>
+          ) : (
+            <Button variant="ghost" onClick={() => setIsDetailsModalOpen(false)}>
+              Cerrar
+            </Button>
+          )
+        }
+      >
+        {selectedReservation && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <SectionCard
+              eyebrow="Cliente"
+              title="Información"
+              icon={<User className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+            >
+              {loadingClientInfo ? (
+                <p className="text-sm text-slate-500">Cargando...</p>
+              ) : (
+                <div className="space-y-3">
+                  <DetailRow
+                    icon={<User className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                    label="Nombre"
+                    value={clientInfo?.name || selectedReservation.clientName || "—"}
+                  />
+                  <DetailRow
+                    icon={<Mail className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                    label="Correo"
+                    value={clientInfo?.email || "—"}
+                  />
+                </div>
+              )}
+            </SectionCard>
 
-      {/* Modal para cambiar estado */}
-      <Dialog
+            <SectionCard
+              eyebrow="Reserva"
+              title="Detalles"
+              icon={<Calendar className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+            >
+              <div className="space-y-3">
+                <DetailRow
+                  icon={<Trophy className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Cancha"
+                  value={selectedReservation.fieldName || "—"}
+                />
+                <DetailRow
+                  icon={<MapPin className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Dirección"
+                  value={selectedReservation.fieldAddress || "—"}
+                />
+                <DetailRow
+                  icon={<Calendar className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Fecha"
+                  value={formatDate(selectedReservation.date)}
+                />
+                <DetailRow
+                  icon={<Clock className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Horario"
+                  value={`${selectedReservation.startTime} – ${selectedReservation.endTime}`}
+                />
+                <DetailRow
+                  icon={<Banknote className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Total"
+                  value={
+                    <span className="font-semibold text-emerald-600">
+                      ${selectedReservation.totalPrice?.toLocaleString() || 0}
+                    </span>
+                  }
+                />
+              </div>
+            </SectionCard>
+
+            <div className="md:col-span-2 flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
+              <span className="text-sm text-slate-500">Estado actual</span>
+              <StatusPill tone={STATUS[selectedReservation.status]?.tone || "neutral"} size="md">
+                {STATUS[selectedReservation.status]?.label || selectedReservation.status}
+              </StatusPill>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal cambiar estado */}
+      <Modal
         open={isChangeStatusModalOpen}
         onClose={() => {
           if (!changingStatus) {
@@ -779,260 +734,151 @@ function AssociateReservations() {
             setSelectedReservation(null);
           }
         }}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-          },
-        }}
-      >
-        <DialogTitle>
-          <MDBox display="flex" justifyContent="space-between" alignItems="center">
-            <MDTypography variant="h5" fontWeight="bold">
-              Cambiar Estado de Reserva
-            </MDTypography>
-            <MDButton
-              iconOnly
-              size="small"
+        size="lg"
+        eyebrow="Asociado · Reservas"
+        title="Cambiar estado de reserva"
+        subtitle="El cliente recibirá un correo con la actualización."
+        icon={<Pencil className="h-[22px] w-[22px] shrink-0" strokeWidth={2} aria-hidden />}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              disabled={changingStatus}
               onClick={() => {
-                if (!changingStatus) {
-                  setIsChangeStatusModalOpen(false);
-                  setNewStatus("");
-                  setStatusChangeReason("");
-                  setSelectedReservation(null);
-                }
+                setIsChangeStatusModalOpen(false);
+                setNewStatus("");
+                setStatusChangeReason("");
+                setSelectedReservation(null);
               }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              disabled={
+                !newStatus ||
+                !statusChangeReason ||
+                changingStatus ||
+                selectedReservation?.status === newStatus
+              }
+              onClick={handleStatusSubmit}
+            >
+              <Save className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+              {changingStatus ? "Guardando..." : "Guardar cambio"}
+            </Button>
+          </>
+        }
+      >
+        {selectedReservation && (
+          <div className="space-y-4">
+            <SectionCard padding="p-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.1em] text-slate-500">Cancha</p>
+                  <p className="font-semibold text-slate-900">{selectedReservation.fieldName}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.1em] text-slate-500">Cliente</p>
+                  <p className="font-semibold text-slate-900">
+                    {selectedReservation.clientName ||
+                      clientsMap[selectedReservation.clientId] ||
+                      "Cliente"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.1em] text-slate-500">Fecha</p>
+                  <p className="font-semibold text-slate-900">
+                    {formatDate(selectedReservation.date)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.1em] text-slate-500">Hora</p>
+                  <p className="font-semibold text-slate-900">
+                    {selectedReservation.startTime} – {selectedReservation.endTime}
+                  </p>
+                </div>
+                <div className="col-span-2 flex items-center gap-2">
+                  <span className="text-xs uppercase tracking-[0.1em] text-slate-500">
+                    Estado actual
+                  </span>
+                  <StatusPill
+                    tone={STATUS[selectedReservation.status]?.tone || "neutral"}
+                    size="sm"
+                  >
+                    {STATUS[selectedReservation.status]?.label || selectedReservation.status}
+                  </StatusPill>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SelectField
+              label="Nuevo estado"
+              value={newStatus}
+              onChange={(e) => setNewStatus(e.target.value)}
+              required
               disabled={changingStatus}
             >
-              <Icon>close</Icon>
-            </MDButton>
-          </MDBox>
-        </DialogTitle>
+              <option value="">Selecciona un estado</option>
+              <option value="pending">Pendiente</option>
+              <option value="confirmed">Confirmada</option>
+              <option value="cancelled">Cancelada</option>
+              <option value="completed">Completada</option>
+            </SelectField>
 
-        <DialogContent>
-          {selectedReservation && (
-            <MDBox>
-              <MDBox mb={3}>
-                <MDTypography variant="body2" color="text" mb={1}>
-                  <strong>Cancha:</strong> {selectedReservation.fieldName}
-                </MDTypography>
-                <MDTypography variant="body2" color="text" mb={1}>
-                  <strong>Cliente:</strong>{" "}
-                  {selectedReservation.clientName ||
-                    clientsMap[selectedReservation.clientId] ||
-                    "Cliente"}
-                </MDTypography>
-                <MDTypography variant="body2" color="text" mb={1}>
-                  <strong>Fecha:</strong> {formatDate(selectedReservation.date)}
-                </MDTypography>
-                <MDTypography variant="body2" color="text" mb={2}>
-                  <strong>Hora:</strong> {formatTime(selectedReservation.startTime)} -{" "}
-                  {formatTime(selectedReservation.endTime)}
-                </MDTypography>
-                <MDBox display="flex" alignItems="center" gap={1}>
-                  <MDTypography variant="body2" color="text">
-                    <strong>Estado Actual:</strong>
-                  </MDTypography>
-                  <Chip
-                    label={getStatusText(selectedReservation.status)}
-                    color={getStatusColor(selectedReservation.status)}
-                    size="small"
-                  />
-                </MDBox>
-              </MDBox>
+            <Textarea
+              label="Razón del cambio"
+              value={statusChangeReason}
+              onChange={(e) => setStatusChangeReason(e.target.value)}
+              rows={4}
+              placeholder="Ej: Cliente solicitó cancelación por motivos personales..."
+              hint="Esta información se enviará al cliente por correo."
+              disabled={changingStatus}
+              required
+            />
+          </div>
+        )}
+      </Modal>
 
-              <Divider sx={{ my: 2 }} />
+      <ConfirmationDialog
+        open={isConfirmOpen}
+        onClose={() => {
+          setIsConfirmOpen(false);
+          setSelectedReservation(null);
+        }}
+        onConfirm={confirmActionHandler}
+        title={`Confirmar ${confirmAction === "approve" ? "aprobación" : "rechazo"}`}
+        message={`¿Estás seguro de que quieres ${
+          confirmAction === "approve" ? "aprobar" : "rechazar"
+        } la reserva para "${selectedReservation?.fieldName || ""}"?`}
+        confirmColor={confirmAction === "approve" ? "success" : "error"}
+      />
 
-              <FormControl fullWidth margin="normal" required>
-                <InputLabel>Nuevo Estado</InputLabel>
-                <Select
-                  value={newStatus}
-                  onChange={(e) => setNewStatus(e.target.value)}
-                  label="Nuevo Estado"
-                  disabled={changingStatus}
-                >
-                  <MenuItem value="pending">Pendiente</MenuItem>
-                  <MenuItem value="confirmed">Confirmada</MenuItem>
-                  <MenuItem value="cancelled">Cancelada</MenuItem>
-                  <MenuItem value="completed">Completada</MenuItem>
-                </Select>
-              </FormControl>
-
-              <TextField
-                fullWidth
-                margin="normal"
-                label="Razón del Cambio"
-                multiline
-                rows={4}
-                value={statusChangeReason}
-                onChange={(e) => setStatusChangeReason(e.target.value)}
-                placeholder="Ej: Cliente solicitó cancelación por motivos personales..."
-                helperText="Explica brevemente el motivo del cambio de estado. Esta información se enviará al cliente por correo."
-                disabled={changingStatus}
-                required
-              />
-            </MDBox>
-          )}
-        </DialogContent>
-
-        <DialogActions sx={{ p: 3, pt: 2 }}>
-          <MDButton
-            onClick={() => {
-              if (!changingStatus) {
-                setIsChangeStatusModalOpen(false);
-                setNewStatus("");
-                setStatusChangeReason("");
-                setSelectedReservation(null);
-              }
-            }}
-            color="secondary"
-            variant="outlined"
-            disabled={changingStatus}
-          >
-            Cancelar
-          </MDButton>
-          <MDButton
-            variant="gradient"
-            color="info"
-            onClick={async () => {
-              if (!selectedReservation || !newStatus) return;
-
-              // No permitir cambiar al mismo estado
-              if (selectedReservation.status === newStatus) {
-                setSnackbar({
-                  open: true,
-                  color: "warning",
-                  message: "La reserva ya está en ese estado.",
-                });
-                return;
-              }
-
-              setChangingStatus(true);
-              try {
-                // Actualizar el estado
-                const updatedReservation = await updateReservationStatus(
-                  selectedReservation.id,
-                  newStatus,
-                  statusChangeReason,
-                  currentUser.uid
-                );
-
-                // Obtener información del cliente para el correo
-                let clientEmail = "";
-                let clientName = selectedReservation.clientName || "Cliente";
-
-                try {
-                  if (selectedReservation.clientId) {
-                    const clientDoc = await getDoc(doc(db, "users", selectedReservation.clientId));
-                    if (clientDoc.exists()) {
-                      const clientData = clientDoc.data();
-                      clientEmail = clientData.email || "";
-                      clientName = clientData.name || clientName;
-                    }
-                  }
-                } catch (error) {
-                  console.error("Error al obtener información del cliente:", error);
-                }
-
-                // Crear notificación en la app para el cliente
-                try {
-                  if (newStatus === "confirmed") {
-                    await notifyReservationConfirmed(
-                      selectedReservation.id,
-                      selectedReservation.fieldName || "la cancha",
-                      selectedReservation.clientId
-                    );
-                  } else if (newStatus === "cancelled") {
-                    await notifyReservationCancelled(
-                      selectedReservation.id,
-                      selectedReservation.fieldName || "la cancha",
-                      selectedReservation.clientId
-                    );
-                  }
-                } catch (notificationError) {
-                  console.error("Error al crear notificación:", notificationError);
-                  // No fallar la operación si la notificación falla
-                }
-
-                // Enviar correo de notificación para cualquier cambio de estado
-                if (clientEmail) {
-                  try {
-                    await sendReservationStatusChangeEmail(
-                      { ...selectedReservation, previousStatus: selectedReservation.status },
-                      newStatus,
-                      statusChangeReason,
-                      clientEmail,
-                      clientName
-                    );
-                  } catch (emailError) {
-                    console.error("Error al enviar correo:", emailError);
-                    // No fallar la operación si el correo falla, pero informar
-                    setSnackbar({
-                      open: true,
-                      color: "warning",
-                      message: `Estado actualizado, pero no se pudo enviar el correo: ${emailError.message}`,
-                    });
-                  }
-                }
-
-                setSnackbar({
-                  open: true,
-                  color: "success",
-                  message: `Estado de la reserva actualizado a "${getStatusText(
-                    newStatus
-                  )}" exitosamente.${
-                    clientEmail ? " Se envió una notificación por correo al cliente." : ""
-                  }`,
-                });
-
-                setIsChangeStatusModalOpen(false);
-                setNewStatus("");
-                setStatusChangeReason("");
-                setSelectedReservation(null);
-              } catch (error) {
-                console.error("Error al cambiar estado:", error);
-                setSnackbar({
-                  open: true,
-                  color: "error",
-                  message: error.message || "Error al cambiar el estado de la reserva.",
-                });
-              } finally {
-                setChangingStatus(false);
-              }
-            }}
-            disabled={
-              !newStatus ||
-              !statusChangeReason ||
-              changingStatus ||
-              selectedReservation?.status === newStatus
-            }
-          >
-            {changingStatus ? (
-              <>
-                <CircularProgress size={20} color="inherit" sx={{ mr: 1 }} />
-                Procesando...
-              </>
-            ) : (
-              <>
-                <Icon sx={{ mr: 1 }}>save</Icon>
-                Guardar Cambio
-              </>
-            )}
-          </MDButton>
-        </DialogActions>
-      </Dialog>
-
-      {/* Toast Notifications */}
-      {snackbar.open && (
-        <Toast
-          type={snackbar.color === "success" ? "success" : snackbar.color === "error" ? "error" : "info"}
-          message={snackbar.message}
-          onClose={closeSnackbar}
-        />
-      )}
+      <Toast
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((t) => ({ ...t, open: false }))}
+      />
     </DashboardLayout>
   );
 }
+
+function DetailRow({ icon, label, value }) {
+  return (
+    <div className="flex items-start gap-2">
+      <span className="mt-0.5 text-slate-400">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs uppercase tracking-[0.1em] text-slate-500">{label}</p>
+        <p className="text-sm font-medium text-slate-900 break-words">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+DetailRow.propTypes = {
+  icon: PropTypes.node,
+  label: PropTypes.string.isRequired,
+  value: PropTypes.node,
+};
 
 export default AssociateReservations;

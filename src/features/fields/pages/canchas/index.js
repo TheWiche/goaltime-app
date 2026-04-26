@@ -15,7 +15,14 @@ import {
 } from "shared/services/firebaseService";
 import { useAuth } from "shared/context/AuthContext";
 import useDebounce from "shared/hooks/useDebounce";
-import { Input, Toast, Button, SkeletonGrid, GlassCard } from "shared/components/ui";
+import {
+  Toast,
+  Button,
+  SkeletonGrid,
+  PageHeader,
+  SectionCard,
+  StatusPill,
+} from "shared/components/ui";
 import {
   useFieldCardsStagger,
   useEmptyState,
@@ -25,13 +32,21 @@ import ReservationModal from "./components/ReservationModal";
 import AdminEditFieldModal from "./components/AdminEditFieldModal";
 import ConfirmationDialog from "features/users/pages/admin-users/components/ConfirmationDialog";
 import FieldCard from "./components/FieldCard";
-import { FilterList, Search } from "@mui/icons-material";
+import { Search, Trophy } from "lucide-react";
 
 const STATUS_MAP = {
   approved: { label: "Aprobada", variant: "success" },
   pending: { label: "Pendiente", variant: "warning" },
   rejected: { label: "Rechazada", variant: "error" },
   disabled: { label: "Deshabilitada", variant: "gray" },
+};
+
+const FILTER_TONES = {
+  all: "neutral",
+  approved: "success",
+  pending: "warning",
+  rejected: "danger",
+  disabled: "neutral",
 };
 
 const FILTER_TITLES = {
@@ -58,7 +73,6 @@ function Canchas() {
   const [fields, setFields] = useState([]);
   const [filteredFields, setFilteredFields] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterOpen, setFilterOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebounce(searchTerm, 300);
@@ -304,133 +318,148 @@ function Canchas() {
 
   const handleFilterSelect = (status) => {
     setStatusFilter(status);
-    setFilterOpen(false);
     const params = new URLSearchParams(location.search);
     if (status === "all") params.delete("status");
     else params.set("status", status);
     navigate(`/canchas${params.toString() ? `?${params}` : ""}`, { replace: true });
   };
 
+  const isAdmin = userProfile?.role === "admin";
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
 
-      <div className="py-4">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <h1 className="text-3xl font-bold font-heading text-primary-900">
-            {userProfile?.role === "admin" ? FILTER_TITLES[statusFilter] : "Canchas Disponibles"}
-          </h1>
+      <PageHeader
+        eyebrow={isAdmin ? "Administración · Catálogo" : "Explora · Canchas"}
+        title={isAdmin ? FILTER_TITLES[statusFilter] : "Canchas disponibles"}
+        subtitle={
+          isAdmin
+            ? "Gestiona el catálogo, aprueba solicitudes y modera la información de cada cancha."
+            : "Explora canchas, marca tus favoritas y reserva en segundos."
+        }
+        actions={
+          <span className="hidden sm:inline-flex items-center text-sm text-slate-500">
+            {filteredFields.length}{" "}
+            {filteredFields.length === 1 ? "resultado" : "resultados"}
+          </span>
+        }
+      />
 
-          {userProfile?.role === "admin" && (
-            <div className="relative">
-              <Button
-                variant="glass"
-                size="md"
-                onClick={() => setFilterOpen((o) => !o)}
-                className="gap-2"
-              >
-                <FilterList className="w-4 h-4" />
-                Filtrar
-              </Button>
-              {filterOpen && (
-                <GlassCard className="absolute right-0 mt-2 w-44 z-20 p-2">
-                  {FILTER_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => handleFilterSelect(opt.value)}
-                      className={[
-                        "w-full text-left px-4 py-2.5 text-sm font-medium font-heading rounded-lg transition-all duration-200",
-                        statusFilter === opt.value
-                          ? "bg-primary text-white shadow-md"
-                          : "text-primary-900 hover:bg-primary/10",
-                      ].join(" ")}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </GlassCard>
-              )}
+      <SectionCard padding="p-4 sm:p-5" className="mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+          <div className="relative flex-1" ref={searchRef}>
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <input
+              type="text"
+              placeholder="Buscar por nombre, dirección o descripción..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-11 pl-11 pr-4 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 transition-all duration-200 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/20"
+            />
+          </div>
+          {isAdmin && (
+            <div className="flex flex-wrap gap-2">
+              {FILTER_OPTIONS.map((opt) => {
+                const active = statusFilter === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => handleFilterSelect(opt.value)}
+                    className={[
+                      "h-9 px-3.5 rounded-lg text-sm font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
+                      active
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300",
+                    ].join(" ")}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
+        {isAdmin && statusFilter !== "all" && (
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-xs uppercase tracking-[0.12em] text-slate-500 font-semibold">
+              Filtro activo
+            </span>
+            <StatusPill tone={FILTER_TONES[statusFilter]} size="sm" dot>
+              {FILTER_OPTIONS.find((o) => o.value === statusFilter)?.label}
+            </StatusPill>
+          </div>
+        )}
+      </SectionCard>
 
-        {/* Search */}
-        <div className="mb-6" ref={searchRef}>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-400" />
-            <Input
-              placeholder="Buscar canchas por nombre, dirección o descripción..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              fullWidth
-              className="pl-10"
+      {loading ? (
+        <SkeletonGrid count={6} />
+      ) : filteredFields.length > 0 ? (
+        <div
+          ref={cardsContainerRef}
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
+        >
+          {filteredFields.map((field) => (
+            <FieldCard
+              key={field.id}
+              ref={(el) => {
+                if (el) fieldRefs.current[field.id] = el;
+              }}
+              field={field}
+              userProfile={userProfile}
+              favoriteIds={favoriteIds}
+              togglingFavorite={togglingFavorite}
+              statusMap={STATUS_MAP}
+              loadingAction={loadingAction}
+              onEdit={(f) => {
+                setFieldToEdit(f);
+                setIsEditModalOpen(true);
+              }}
+              onToggleFavorite={handleToggleFavorite}
+              onAction={(f, action) => {
+                if (action === "approve" || action === "reject") {
+                  setFieldToApprove(f);
+                  setConfirmAction(action);
+                  setIsConfirmOpen(true);
+                } else if (action === "reserve" && userProfile?.role === "cliente") {
+                  setSelectedField(f);
+                  setIsReservationModalOpen(true);
+                }
+              }}
             />
-          </div>
+          ))}
         </div>
-
-        {/* Grid de canchas */}
-        {loading ? (
-          <SkeletonGrid count={6} />
-        ) : filteredFields.length > 0 ? (
-          <div
-            ref={cardsContainerRef}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
-          >
-            {filteredFields.map((field) => (
-              <FieldCard
-                key={field.id}
-                ref={(el) => {
-                  if (el) fieldRefs.current[field.id] = el;
-                }}
-                field={field}
-                userProfile={userProfile}
-                favoriteIds={favoriteIds}
-                togglingFavorite={togglingFavorite}
-                statusMap={STATUS_MAP}
-                loadingAction={loadingAction}
-                onEdit={(f) => {
-                  setFieldToEdit(f);
-                  setIsEditModalOpen(true);
-                }}
-                onToggleFavorite={handleToggleFavorite}
-                onAction={(f, action) => {
-                  if (action === "approve" || action === "reject") {
-                    setFieldToApprove(f);
-                    setConfirmAction(action);
-                    setIsConfirmOpen(true);
-                  } else if (action === "reserve" && userProfile?.role === "cliente") {
-                    setSelectedField(f);
-                    setIsReservationModalOpen(true);
-                  }
-                }}
-              />
-            ))}
-          </div>
-        ) : (
-          /* Estado vacío */
-          <GlassCard className="p-16">
-            <div ref={emptyStateRef} className="text-center">
-              <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                <Search className="w-10 h-10 text-primary" />
-              </div>
-              <h3 className="text-xl font-bold font-heading text-primary-900 mb-2">
-                {searchTerm ? "No se encontraron canchas" : "No hay canchas disponibles"}
-              </h3>
-              <p className="text-sm text-surface-500 mb-6 max-w-md mx-auto">
-                {searchTerm
-                  ? `No hay canchas que coincidan con "${searchTerm}"`
-                  : "No hay canchas que coincidan con el filtro seleccionado."}
-              </p>
-              {searchTerm && (
-                <Button variant="secondary" size="md" onClick={() => setSearchTerm("")}>
-                  Limpiar búsqueda
-                </Button>
+      ) : (
+        <SectionCard padding="p-12">
+          <div ref={emptyStateRef} className="text-center max-w-md mx-auto">
+            <div className="w-16 h-16 rounded-2xl bg-primary-50 text-primary mx-auto mb-4 flex items-center justify-center">
+              {searchTerm ? (
+                <Search className="h-8 w-8" strokeWidth={2} aria-hidden />
+              ) : (
+                <Trophy className="h-8 w-8" strokeWidth={2} aria-hidden />
               )}
             </div>
-          </GlassCard>
-        )}
-      </div>
+            <h3 className="text-xl font-semibold font-heading text-slate-900 mb-2">
+              {searchTerm ? "No se encontraron canchas" : "No hay canchas disponibles"}
+            </h3>
+            <p className="text-sm text-slate-500 mb-6">
+              {searchTerm
+                ? `No hay canchas que coincidan con "${searchTerm}"`
+                : "No hay canchas que coincidan con el filtro seleccionado."}
+            </p>
+            {searchTerm && (
+              <Button variant="ghost" size="md" onClick={() => setSearchTerm("")}>
+                Limpiar búsqueda
+              </Button>
+            )}
+          </div>
+        </SectionCard>
+      )}
 
       <Footer />
 

@@ -1,47 +1,27 @@
-import { MDBox } from "shared/components/md-shims";
-// src/layouts/authentication/components/BasicLayout/index.js
-
 import PropTypes from "prop-types";
-import Grid from "@mui/material/Grid";
 import PageLayout from "shared/components/layout/LayoutContainers/PageLayout";
 import Footer from "features/auth/components/Footer";
 
 function BasicLayout({ image, children }) {
   return (
     <PageLayout>
-      <MDBox
-        position="absolute"
-        width="100%"
-        minHeight="100vh"
-        sx={{
-          backgroundImage: ({ functions: { linearGradient, rgba }, palette: { gradients } }) =>
-            image &&
-            `${linearGradient(
-              rgba(gradients.dark.main, 0.6),
-              rgba(gradients.dark.state, 0.6)
-            )}, url(${image})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
+      <div
+        className="pointer-events-none absolute inset-0 min-h-screen w-full bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: image
+            ? `linear-gradient(rgba(15, 23, 42, 0.62), rgba(15, 23, 42, 0.62)), url(${image})`
+            : undefined,
         }}
+        aria-hidden
       />
-      {/* 👇 Este es el nuevo contenedor principal con Flexbox */}
-      <MDBox px={1} width="100%" height="100vh" mx="auto" display="flex" flexDirection="column">
-        {/* Este Grid ahora crece para ocupar el espacio disponible, empujando al footer */}
-        <Grid
-          container
-          spacing={1}
-          justifyContent="center"
-          alignItems="center"
-          sx={{ height: "100%", flexGrow: 1 }} // 👈 Se añade flexGrow
-        >
-          <Grid item xs={11} sm={9} md={5} lg={4} xl={3}>
+      <div className="relative mx-auto flex min-h-screen w-full max-w-full flex-col px-2">
+        <div className="flex min-h-0 flex-1 items-center justify-center py-6">
+          <div className="w-[92%] max-w-sm sm:max-w-md md:max-w-lg lg:max-w-md xl:max-w-sm">
             {children}
-          </Grid>
-        </Grid>
-        {/* El footer ahora es el último elemento del contenedor Flexbox */}
+          </div>
+        </div>
         <Footer light />
-      </MDBox>
+      </div>
     </PageLayout>
   );
 }

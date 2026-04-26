@@ -1,40 +1,19 @@
 import { MDBox, MDTypography } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-
-* Product Page: https://www.goaltime.site/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
-// @mui material components
-import Card from "@mui/material/Card";
-import Icon from "@mui/material/Icon";
-
-// GoalTime App components
-
-// GoalTime App example components
+import { ArrowUp } from "lucide-react";
 import TimelineItem from "shared/components/layout/Timeline/TimelineItem";
 
 function OrdersOverview() {
   return (
-    <Card sx={{ height: "100%" }}>
+    <div className="h-full overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm">
       <MDBox pt={3} px={3}>
         <MDTypography variant="h6" fontWeight="medium">
           Orders overview
         </MDTypography>
         <MDBox mt={0} mb={2}>
           <MDTypography variant="button" color="text" fontWeight="regular">
-            <MDTypography display="inline" variant="body2" verticalAlign="middle">
-              <Icon sx={{ color: ({ palette: { success } }) => success.main }}>arrow_upward</Icon>
-            </MDTypography>
+            <span className="inline-flex items-center align-middle">
+              <ArrowUp className="mr-0.5 h-[18px] w-[18px] text-emerald-600" strokeWidth={2} aria-hidden />
+            </span>
             &nbsp;
             <MDTypography variant="button" color="text" fontWeight="medium">
               24%
@@ -76,7 +55,7 @@ function OrdersOverview() {
           lastItem
         />
       </MDBox>
-    </Card>
+    </div>
   );
 }
 

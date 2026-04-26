@@ -1,4 +1,4 @@
-import { MDBox, MDTypography, MDInput, MDButton, MDSnackbar } from "shared/components/md-shims";
+import { MDBox, MDTypography, MDButton, MDSnackbar } from "shared/components/md-shims";
 /**
 =========================================================
 * GoalTime App - v2.2.0
@@ -7,9 +7,7 @@ import { MDBox, MDTypography, MDInput, MDButton, MDSnackbar } from "shared/compo
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import InputAdornment from "@mui/material/InputAdornment";
-import IconButton from "@mui/material/IconButton";
-import { Lock, Visibility, VisibilityOff } from "@mui/icons-material";
+import { Lock, Eye, EyeOff } from "lucide-react";
 
 // GoalTime App components
 import { FullScreenLoader } from "shared/components/loaders/FullScreenLoader";
@@ -311,47 +309,32 @@ function ConfirmResetPassword() {
               >
                 Nueva Contraseña
               </MDTypography>
-              <MDInput
-                type={showPassword ? "text" : "password"}
-                placeholder="********"
-                fullWidth
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    backgroundColor: "grey.100",
-                    "& fieldset": {
-                      borderColor: "grey.300",
-                    },
-                    "&:hover fieldset": {
-                      borderColor: "grey.400",
-                    },
-                  },
-                }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Lock sx={{ color: "text.secondary" }} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                        size="small"
-                      >
-                        {showPassword ? (
-                          <VisibilityOff sx={{ color: "text.secondary" }} />
-                        ) : (
-                          <Visibility sx={{ color: "text.secondary" }} />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                  <Lock className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+                </span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="********"
+                  className="w-full rounded-lg border border-slate-300 bg-slate-100 py-2.5 pl-10 pr-11 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-primary/20"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+                  ) : (
+                    <Eye className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+                  )}
+                </button>
+              </div>
             </MDBox>
 
             {/* Confirm Password Input */}
@@ -365,47 +348,32 @@ function ConfirmResetPassword() {
               >
                 Confirmar Contraseña
               </MDTypography>
-              <MDInput
-                type={showConfirmPassword ? "text" : "password"}
-                placeholder="********"
-                fullWidth
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                sx={{
-                  "& .MuiOutlinedInput-root": {
-                    backgroundColor: "grey.100",
-                    "& fieldset": {
-                      borderColor: "grey.300",
-                    },
-                    "&:hover fieldset": {
-                      borderColor: "grey.400",
-                    },
-                  },
-                }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Lock sx={{ color: "text.secondary" }} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        edge="end"
-                        size="small"
-                      >
-                        {showConfirmPassword ? (
-                          <VisibilityOff sx={{ color: "text.secondary" }} />
-                        ) : (
-                          <Visibility sx={{ color: "text.secondary" }} />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                  <Lock className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+                </span>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="********"
+                  className="w-full rounded-lg border border-slate-300 bg-slate-100 py-2.5 pl-10 pr-11 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-primary/20"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+                  ) : (
+                    <Eye className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+                  )}
+                </button>
+              </div>
             </MDBox>
 
             {/* Submit Button */}

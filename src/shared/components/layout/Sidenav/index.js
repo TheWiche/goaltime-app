@@ -1,101 +1,100 @@
 import { useEffect } from "react";
 import { useLocation, NavLink } from "react-router-dom";
 import PropTypes from "prop-types";
-import List from "@mui/material/List";
-import Divider from "@mui/material/Divider";
-import Link from "@mui/material/Link";
-import Icon from "@mui/material/Icon";
-import { SportsSoccer, TrendingUp } from "@mui/icons-material";
-
-import { MDBox, MDTypography } from "shared/components/md-shims";
-import SidenavCollapse from "./SidenavCollapse";
-import SidenavRoot from "./SidenavRoot";
-import sidenavLogoLabel from "./styles/sidenav";
-
+import { X, Shield, Briefcase, User } from "lucide-react";
+import { useAuth } from "shared/context/AuthContext";
 import {
   useMaterialUIController,
   setMiniSidenav,
   setTransparentSidenav,
   setWhiteSidenav,
 } from "shared/context";
+import SidenavCollapse from "./SidenavCollapse";
+import SidenavRoot from "./SidenavRoot";
 
-function Sidenav({ color, brand, brandName, routes, ...rest }) {
+const ROLE_CONFIG = {
+  admin: {
+    label: "Administrador",
+    Icon: Shield,
+    tone: "bg-primary-50 text-primary-800 border-primary-200",
+  },
+  asociado: {
+    label: "Asociado",
+    Icon: Briefcase,
+    tone: "bg-cta-50 text-cta-700 border-cta-200",
+  },
+  cliente: {
+    label: "Cliente",
+    Icon: User,
+    tone: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+};
+
+function Sidenav({ brand, brandName, routes, ...rest }) {
   const [controller, dispatch] = useMaterialUIController();
   const { miniSidenav, transparentSidenav, whiteSidenav, darkMode } = controller;
   const location = useLocation();
+  const { userProfile } = useAuth();
   const collapseName = location.pathname.replace("/", "");
 
   const closeSidenav = () => setMiniSidenav(dispatch, true);
 
   useEffect(() => {
-    function handleMiniSidenav() {
+    function handleResize() {
       setMiniSidenav(dispatch, window.innerWidth < 1200);
       setTransparentSidenav(dispatch, window.innerWidth < 1200 ? false : transparentSidenav);
       setWhiteSidenav(dispatch, window.innerWidth < 1200 ? false : whiteSidenav);
     }
 
-    window.addEventListener("resize", handleMiniSidenav);
-    handleMiniSidenav();
-
-    return () => window.removeEventListener("resize", handleMiniSidenav);
+    window.addEventListener("resize", handleResize);
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
   }, [dispatch, location, transparentSidenav, whiteSidenav]);
 
-  const renderRoutes = routes.map(({ type, name, icon, title, noCollapse, key, href, route }) => {
-    let returnValue;
+  const role = ROLE_CONFIG[userProfile?.role] || ROLE_CONFIG.cliente;
+  const RoleIcon = role.Icon;
+  const compactLabels = miniSidenav;
 
-    if (type === "collapse") {
-      returnValue = href ? (
-        <Link
-          href={href}
-          key={key}
-          target="_blank"
-          rel="noreferrer"
-          sx={{ textDecoration: "none" }}
-        >
-          <SidenavCollapse
-            name={name}
-            icon={icon}
-            active={key === collapseName}
-            noCollapse={noCollapse}
-          />
-        </Link>
-      ) : (
-        <NavLink key={key} to={route}>
-          <SidenavCollapse name={name} icon={icon} active={key === collapseName} />
-        </NavLink>
+  const renderRoutes = routes.map(({ type, name, icon, title, key, route }) => {
+    if (type === "collapse" && route) {
+      return (
+        <li key={key} className="list-none">
+          <NavLink
+            to={route}
+            className="block no-underline"
+            aria-label={name}
+          >
+            <SidenavCollapse name={name} icon={icon} active={key === collapseName} />
+          </NavLink>
+        </li>
       );
-    } else if (type === "title") {
-      returnValue = (
-        <MDTypography
+    }
+
+    if (type === "title") {
+      return (
+        <p
           key={key}
-          color="primary"
-          display="block"
-          variant="caption"
-          fontWeight="bold"
-          textTransform="uppercase"
-          pl={3}
-          mt={2}
-          mb={1}
-          ml={1}
-          sx={{ fontFamily: "'Poppins', sans-serif", fontSize: "0.7rem", letterSpacing: "0.5px" }}
+          className={[
+            "px-3 mt-5 mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400",
+            compactLabels ? "xl:opacity-0 xl:h-0 xl:m-0" : "",
+          ].join(" ")}
         >
           {title}
-        </MDTypography>
+        </p>
       );
-    } else if (type === "divider") {
-      returnValue = (
-        <Divider
+    }
+
+    if (type === "divider") {
+      return (
+        <div
           key={key}
-          light
-          sx={{ 
-            borderColor: "rgba(30, 58, 138, 0.1)",
-            my: 1.5,
-          }}
+          aria-hidden="true"
+          className="my-3 h-px w-full bg-slate-100"
         />
       );
     }
 
-    return returnValue;
+    return null;
   });
 
   return (
@@ -104,144 +103,116 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
       variant="permanent"
       ownerState={{ transparentSidenav, whiteSidenav, miniSidenav, darkMode }}
     >
-      {/* Header con logo */}
-      <MDBox pt={3} pb={2} px={3}>
-        <MDBox
-          display={{ xs: "block", xl: "none" }}
-          position="absolute"
-          top={0}
-          right={0}
-          p={1.625}
+      {/* Header brand */}
+      <div className="relative flex items-center gap-3 px-4 py-5 border-b border-slate-100">
+        {/* Close button mobile */}
+        <button
+          type="button"
           onClick={closeSidenav}
-          sx={{ cursor: "pointer" }}
+          aria-label="Cerrar menú"
+          className="absolute top-3 right-3 xl:hidden w-8 h-8 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
         >
-          <MDTypography variant="h6" sx={{ color: "#1E3A8A" }}>
-            <Icon sx={{ fontWeight: "bold" }}>close</Icon>
-          </MDTypography>
-        </MDBox>
-        <MDBox
-          component={NavLink}
+          <X className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+        </button>
+
+        <NavLink
           to="/"
-          display="flex"
-          flexDirection="column"
-          alignItems="center"
-          justifyContent="center"
-          sx={{ 
-            textAlign: "center",
-            transition: "all 200ms",
-            "&:hover": { transform: "scale(1.05)" }
-          }}
+          className="flex items-center gap-3 flex-1 min-w-0 no-underline group"
         >
           {brand && (
-            <MDBox
-              component="img"
-              src={brand}
-              alt="Brand"
-              sx={{ 
-                width: "3.5rem", 
-                height: "3.5rem", 
-                mb: 1.5,
-                borderRadius: "12px",
-                boxShadow: "0 4px 12px rgba(30, 58, 138, 0.15)",
-              }}
-            />
+            <span className="shrink-0 w-11 h-11 rounded-xl overflow-hidden bg-white border border-slate-200 shadow-sm grid place-items-center">
+              <img src={brand} alt={brandName} className="w-9 h-9 object-contain" />
+            </span>
           )}
-          <MDBox width="100%" sx={(theme) => sidenavLogoLabel(theme, { miniSidenav })}>
-            <MDTypography
-              component="h6"
-              variant="h5"
-              fontWeight="bold"
-              textAlign="center"
-              sx={{ 
-                color: "#1E3A8A",
-                fontFamily: "'Poppins', sans-serif",
-                letterSpacing: "-0.5px",
-              }}
-            >
-              {brandName}
-            </MDTypography>
-            <MDTypography
-              variant="caption"
-              textAlign="center"
-              sx={{ 
-                color: "#64748b",
-                display: "block",
-                mt: 0.5,
-                fontSize: "0.7rem",
-              }}
-            >
-              Gestión de Canchas
-            </MDTypography>
-          </MDBox>
-        </MDBox>
-      </MDBox>
-      
-      <Divider
-        light
-        sx={{ 
-          borderColor: "rgba(30, 58, 138, 0.1)",
-          mb: 1,
-        }}
-      />
-      
-      {/* Lista de rutas */}
-      <List sx={{ px: 1.5, flex: 1, overflowY: "auto" }}>{renderRoutes}</List>
-      
-      {/* Footer */}
-      <MDBox px={3} py={2}>
-        <Divider
-          light
-          sx={{ 
-            borderColor: "rgba(30, 58, 138, 0.1)",
-            mb: 2,
-          }}
-        />
-        <MDBox
-          sx={{
-            backdropFilter: "blur(8px)",
-            bgcolor: "rgba(30, 58, 138, 0.05)",
-            borderRadius: "12px",
-            p: 2,
-            border: "1px solid rgba(30, 58, 138, 0.1)",
-          }}
-        >
-          <MDTypography
-            variant="caption"
-            fontWeight="bold"
-            sx={{ 
-              color: "#1E3A8A",
-              display: "block",
-              mb: 1,
-              fontFamily: "'Poppins', sans-serif",
-            }}
+          <span
+            className={[
+              "min-w-0 transition-all duration-200",
+              compactLabels ? "xl:opacity-0 xl:max-w-0 xl:overflow-hidden" : "opacity-100",
+            ].join(" ")}
           >
-            GoalTime v2.2
-          </MDTypography>
-          <MDBox display="flex" alignItems="center" gap={0.5} mb={0.5}>
-            <SportsSoccer sx={{ fontSize: 12, color: "#64748b" }} />
-            <MDTypography variant="caption" sx={{ color: "#64748b", fontSize: "0.65rem" }}>
-              Sistema de reservas
-            </MDTypography>
-          </MDBox>
-          <MDBox display="flex" alignItems="center" gap={0.5}>
-            <TrendingUp sx={{ fontSize: 12, color: "#64748b" }} />
-            <MDTypography variant="caption" sx={{ color: "#64748b", fontSize: "0.65rem" }}>
-              Panel modernizado
-            </MDTypography>
-          </MDBox>
-        </MDBox>
-      </MDBox>
+            <span className="block text-[15px] font-semibold font-heading text-primary-900 leading-tight tracking-tight">
+              {brandName}
+            </span>
+            <span className="block text-[11px] text-slate-500 mt-0.5">
+              Gestión de canchas
+            </span>
+          </span>
+        </NavLink>
+      </div>
+
+      {/* Section label */}
+      <div
+        className={[
+          "px-4 pt-4 pb-1",
+          compactLabels ? "xl:hidden" : "",
+        ].join(" ")}
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+          Navegación
+        </p>
+      </div>
+
+      {/* Nav items */}
+      <nav
+        aria-label="Menú principal"
+        className="flex-1 overflow-y-auto px-3 pb-4"
+      >
+        <ul className="flex flex-col gap-0.5 m-0 p-0">{renderRoutes}</ul>
+      </nav>
+
+      {/* Footer: user role pill */}
+      {userProfile && (
+        <div className="px-4 pb-4 pt-3 border-t border-slate-100">
+          <div
+            className={[
+              "rounded-xl border bg-white p-3 flex items-center gap-3 shadow-sm",
+              compactLabels ? "xl:p-2 xl:justify-center" : "",
+              "border-slate-200",
+            ].join(" ")}
+          >
+            <span
+              className={[
+                "shrink-0 w-9 h-9 rounded-lg grid place-items-center border",
+                role.tone,
+              ].join(" ")}
+            >
+              <RoleIcon className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+            </span>
+            <div
+              className={[
+                "min-w-0 flex-1 transition-all duration-200",
+                compactLabels ? "xl:hidden" : "block",
+              ].join(" ")}
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 leading-none">
+                Rol activo
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-900 truncate">
+                {role.label}
+              </p>
+            </div>
+          </div>
+
+          <p
+            className={[
+              "mt-3 text-[10px] text-slate-400 text-center",
+              compactLabels ? "xl:hidden" : "",
+            ].join(" ")}
+          >
+            GoalTime · v2.2
+          </p>
+        </div>
+      )}
     </SidenavRoot>
   );
 }
 
 Sidenav.defaultProps = {
-  color: "info",
   brand: "",
 };
 
 Sidenav.propTypes = {
-  color: PropTypes.oneOf(["primary", "secondary", "info", "success", "warning", "error", "dark"]),
+  color: PropTypes.string,
   brand: PropTypes.string,
   brandName: PropTypes.string.isRequired,
   routes: PropTypes.arrayOf(PropTypes.object).isRequired,

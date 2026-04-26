@@ -1,152 +1,94 @@
 import { MDBox, MDTypography, MDAvatar } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-
-* Product Page: https://www.goaltime.site/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
 import { useState, useEffect } from "react";
-
-// prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
-
-// @mui material components
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import AppBar from "@mui/material/AppBar";
-import Tabs from "@mui/material/Tabs";
-import Tab from "@mui/material/Tab";
-import Icon from "@mui/material/Icon";
-
-// GoalTime App components
-
-// GoalTime App base styles
+import { Home, Mail, Settings } from "lucide-react";
 import breakpoints from "assets/theme/base/breakpoints";
-
-// Images
 import burceMars from "assets/images/bruce-mars.jpg";
 import backgroundImage from "assets/images/bg-profile.jpeg";
 
+const TABS = [
+  { label: "Aplicación", Icon: Home },
+  { label: "Mensaje", Icon: Mail },
+  { label: "Configuración", Icon: Settings },
+];
+
 function Header({ children }) {
-  const [tabsOrientation, setTabsOrientation] = useState("horizontal");
+  const [tabsVertical, setTabsVertical] = useState(false);
   const [tabValue, setTabValue] = useState(0);
 
   useEffect(() => {
-    // A function that sets the orientation state of the tabs.
-    function handleTabsOrientation() {
-      return window.innerWidth < breakpoints.values.sm
-        ? setTabsOrientation("vertical")
-        : setTabsOrientation("horizontal");
+    function handleTabsLayout() {
+      setTabsVertical(window.innerWidth < breakpoints.values.sm);
     }
-
-    /** 
-     The event listener that's calling the handleTabsOrientation function when resizing the window.
-    */
-    window.addEventListener("resize", handleTabsOrientation);
-
-    // Call the handleTabsOrientation function to set the state with the initial value.
-    handleTabsOrientation();
-
-    // Remove event listener on cleanup
-    return () => window.removeEventListener("resize", handleTabsOrientation);
-  }, [tabsOrientation]);
-
-  const handleSetTabValue = (event, newValue) => setTabValue(newValue);
+    window.addEventListener("resize", handleTabsLayout);
+    handleTabsLayout();
+    return () => window.removeEventListener("resize", handleTabsLayout);
+  }, []);
 
   return (
     <MDBox position="relative" mb={5}>
-      <MDBox
-        display="flex"
-        alignItems="center"
-        position="relative"
-        minHeight="18.75rem"
-        borderRadius="xl"
-        sx={{
-          backgroundImage: ({ functions: { rgba, linearGradient }, palette: { gradients } }) =>
-            `${linearGradient(
-              rgba(gradients.info.main, 0.6),
-              rgba(gradients.info.state, 0.6)
-            )}, url(${backgroundImage})`,
-          backgroundSize: "cover",
-          backgroundPosition: "50%",
-          overflow: "hidden",
+      <div
+        className="relative flex min-h-[18.75rem] items-center overflow-hidden rounded-2xl bg-cover bg-center"
+        style={{
+          backgroundImage: `linear-gradient(rgba(59, 130, 246, 0.55), rgba(29, 78, 216, 0.55)), url(${backgroundImage})`,
         }}
       />
-      <Card
-        sx={{
-          position: "relative",
-          mt: -8,
-          mx: 3,
-          py: 2,
-          px: 2,
-        }}
-      >
-        <Grid container spacing={3} alignItems="center">
-          <Grid item>
-            <MDAvatar src={burceMars} alt="profile-image" size="xl" shadow="sm" />
-          </Grid>
-          <Grid item>
-            <MDBox height="100%" mt={0.5} lineHeight={1}>
-              <MDTypography variant="h5" fontWeight="medium">
-                Richard Davis
-              </MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                CEO / Co-Fundador
-              </MDTypography>
-            </MDBox>
-          </Grid>
-          <Grid item xs={12} md={6} lg={4} sx={{ ml: "auto" }}>
-            <AppBar position="static">
-              <Tabs orientation={tabsOrientation} value={tabValue} onChange={handleSetTabValue}>
-                <Tab
-                  label="Aplicación"
-                  icon={
-                    <Icon fontSize="small" sx={{ mt: -0.25 }}>
-                      home
-                    </Icon>
-                  }
-                />
-                <Tab
-                  label="Mensaje"
-                  icon={
-                    <Icon fontSize="small" sx={{ mt: -0.25 }}>
-                      email
-                    </Icon>
-                  }
-                />
-                <Tab
-                  label="Configuración"
-                  icon={
-                    <Icon fontSize="small" sx={{ mt: -0.25 }}>
-                      settings
-                    </Icon>
-                  }
-                />
-              </Tabs>
-            </AppBar>
-          </Grid>
-        </Grid>
+      <div className="relative z-[1] mx-3 -mt-16 rounded-xl border border-slate-200/80 bg-white px-4 py-4 shadow-sm sm:px-6">
+        <div
+          className={[
+            "flex flex-wrap items-center gap-4 md:gap-6",
+            tabsVertical ? "flex-col items-stretch" : "",
+          ].join(" ")}
+        >
+          <MDAvatar src={burceMars} alt="profile-image" size="xl" shadow="sm" />
+          <MDBox height="100%" mt={0.5} lineHeight={1} className="min-w-0 flex-1">
+            <MDTypography variant="h5" fontWeight="medium">
+              Richard Davis
+            </MDTypography>
+            <MDTypography variant="button" color="text" fontWeight="regular">
+              CEO / Co-Fundador
+            </MDTypography>
+          </MDBox>
+          <nav
+            className={[
+              "flex w-full rounded-xl bg-slate-100 p-1 md:ml-auto md:w-auto",
+              tabsVertical ? "flex-col" : "flex-row flex-wrap justify-center",
+            ].join(" ")}
+            aria-label="Secciones de perfil"
+          >
+            {TABS.map((tab, idx) => {
+              const Icon = tab.Icon;
+              const active = tabValue === idx;
+              return (
+                <button
+                  key={tab.label}
+                  type="button"
+                  onClick={() => setTabValue(idx)}
+                  className={[
+                    "flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                    active
+                      ? "bg-white text-primary shadow-sm"
+                      : "text-slate-600 hover:bg-white/70 hover:text-slate-900",
+                    tabsVertical ? "w-full" : "",
+                  ].join(" ")}
+                >
+                  <Icon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
         {children}
-      </Card>
+      </div>
     </MDBox>
   );
 }
 
-// Setting default props for the Header
 Header.defaultProps = {
   children: "",
 };
 
-// Typechecking props for the Header
 Header.propTypes = {
   children: PropTypes.node,
 };

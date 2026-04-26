@@ -1,93 +1,54 @@
-import { MDBox } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-
-* Product Page: https://www.goaltime.site/product/material-dashboard-react
-* Copyright 2023 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
-// prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
-
-// @mui material components
-import ListItem from "@mui/material/ListItem";
-import ListItemIcon from "@mui/material/ListItemIcon";
-import ListItemText from "@mui/material/ListItemText";
-import Icon from "@mui/material/Icon";
-
-// GoalTime App components
-
-// Custom styles for the SidenavCollapse
-import {
-  collapseItem,
-  collapseIconBox,
-  collapseIcon,
-  collapseText,
-} from "./styles/sidenavCollapse";
-
-// GoalTime App context
 import { useMaterialUIController } from "shared/context";
 
 function SidenavCollapse({ icon, name, active, ...rest }) {
   const [controller] = useMaterialUIController();
-  const { miniSidenav, transparentSidenav, whiteSidenav, darkMode, sidenavColor } = controller;
+  const { miniSidenav } = controller;
+
+  const baseClasses = [
+    "group relative flex w-full select-none items-center",
+    "h-11 px-3 my-0.5 rounded-xl",
+    "font-heading text-[13.5px] font-medium",
+    "transition-all duration-200 ease-out",
+    "outline-none focus-visible:ring-[3px] focus-visible:ring-primary/25",
+  ].join(" ");
+
+  const stateClasses = active
+    ? "bg-primary text-white shadow-[0_6px_18px_rgba(30,58,138,0.25)] font-semibold"
+    : "text-slate-600 hover:bg-primary-50 hover:text-primary-900";
+
+  const iconWrapClasses = [
+    "grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-all duration-200",
+    active
+      ? "bg-white/15 text-white"
+      : "bg-slate-50 text-primary-700 group-hover:bg-primary-100 group-hover:text-primary-900",
+  ].join(" ");
 
   return (
-    <ListItem component="li">
-      <MDBox
-        {...rest}
-        sx={(theme) =>
-          collapseItem(theme, {
-            active,
-            transparentSidenav,
-            whiteSidenav,
-            darkMode,
-            sidenavColor,
-          })
-        }
+    <span {...rest} className={[baseClasses, stateClasses].join(" ")}>
+      <span className={iconWrapClasses}>{icon}</span>
+      <span
+        className={[
+          "ml-3 truncate transition-opacity duration-200",
+          miniSidenav ? "xl:ml-0 xl:max-w-0 xl:opacity-0" : "opacity-100",
+        ].join(" ")}
       >
-        <ListItemIcon
-          sx={(theme) =>
-            collapseIconBox(theme, { transparentSidenav, whiteSidenav, darkMode, active })
-          }
-        >
-          {typeof icon === "string" ? (
-            <Icon sx={(theme) => collapseIcon(theme, { active })}>{icon}</Icon>
-          ) : (
-            icon
-          )}
-        </ListItemIcon>
-
-        <ListItemText
-          primary={name}
-          sx={(theme) =>
-            collapseText(theme, {
-              miniSidenav,
-              transparentSidenav,
-              whiteSidenav,
-              active,
-            })
-          }
+        {name}
+      </span>
+      {active && (
+        <span
+          aria-hidden="true"
+          className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-white/90"
         />
-      </MDBox>
-    </ListItem>
+      )}
+    </span>
   );
 }
 
-// Setting default values for the props of SidenavCollapse
 SidenavCollapse.defaultProps = {
   active: false,
 };
 
-// Typechecking props for the SidenavCollapse
 SidenavCollapse.propTypes = {
   icon: PropTypes.node.isRequired,
   name: PropTypes.string.isRequired,

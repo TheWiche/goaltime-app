@@ -1,15 +1,14 @@
 import { forwardRef } from "react";
-import { Badge, Button, GlassCard } from "shared/components/ui";
-import { useCardTilt, useMagneticButton } from "shared/hooks/useGSAPAnimations";
-import { 
-  LocationOn, 
-  AttachMoney, 
-  AccessTime, 
-  Edit, 
-  Favorite, 
-  FavoriteBorder,
-  PhotoCamera 
-} from "@mui/icons-material";
+import PropTypes from "prop-types";
+import { Button, StatusPill } from "shared/components/ui";
+import { MapPin, Banknote, Clock, Pencil, Heart, Trophy } from "lucide-react";
+
+const STATUS_TONES = {
+  approved: "success",
+  pending: "warning",
+  rejected: "danger",
+  disabled: "neutral",
+};
 
 const FieldCard = forwardRef(
   (
@@ -26,141 +25,156 @@ const FieldCard = forwardRef(
     },
     externalRef
   ) => {
-    const cardRef = useCardTilt();
-    const reserveButtonRef = useMagneticButton(0.2);
+    const isAdmin = userProfile?.role === "admin";
+    const isClient = userProfile?.role === "cliente";
+    const isFav = favoriteIds?.includes(field.id);
 
     return (
-      <GlassCard
-        ref={(el) => {
-          // Asignar ambos refs
-          cardRef.current = el;
-          if (externalRef && typeof externalRef === "function") {
-            externalRef(el);
-          }
-        }}
-        className="field-card overflow-hidden"
-        style={{ willChange: "transform" }}
+      <article
+        ref={externalRef}
+        className="field-card group relative flex flex-col overflow-hidden rounded-xl bg-white border border-slate-200 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30"
       >
-        {/* Imagen */}
-        <div className="relative">
+        <div className="relative aspect-[16/9] bg-gradient-to-br from-primary-50 to-secondary/15">
           {field.imageUrl ? (
-            <img src={field.imageUrl} alt={field.name} className="w-full h-48 object-cover" />
+            <img
+              src={field.imageUrl}
+              alt={field.name}
+              className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            />
           ) : (
-            <div className="w-full h-48 bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-              <PhotoCamera className="w-16 h-16 text-primary/40" />
+            <div className="absolute inset-0 flex items-center justify-center text-primary/40">
+              <Trophy className="h-16 w-16" strokeWidth={1.25} aria-hidden />
             </div>
           )}
 
-          {/* Badge de estado (admin) */}
-          {userProfile?.role === "admin" && (
-            <div className="absolute top-3 right-3">
-              <Badge variant={statusMap[field.status]?.variant ?? "gray"} dot>
-                {statusMap[field.status]?.label ?? field.status}
-              </Badge>
-            </div>
-          )}
+          <div className="absolute inset-x-0 top-0 p-3 flex items-start justify-between gap-2">
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => onEdit(field)}
+                className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/95 backdrop-blur-sm text-primary shadow-sm transition-all duration-200 hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/30"
+                aria-label="Editar cancha"
+              >
+                <Pencil className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
+              </button>
+            ) : (
+              <span />
+            )}
 
-          {/* Botón editar (admin) */}
-          {userProfile?.role === "admin" && (
-            <button
-              onClick={() => onEdit(field)}
-              className="absolute top-3 left-3 backdrop-blur-glass bg-white/80 p-2 rounded-lg shadow-md hover:bg-white hover:shadow-lg transition-all duration-200"
-            >
-              <Edit className="w-4 h-4 text-primary" />
-            </button>
-          )}
+            {isAdmin && (
+              <StatusPill tone={STATUS_TONES[field.status] || "neutral"} size="sm">
+                {statusMap?.[field.status]?.label ?? field.status}
+              </StatusPill>
+            )}
 
-          {/* Favorito (cliente) */}
-          {userProfile?.role === "cliente" && (
-            <button
-              onClick={(e) => onToggleFavorite(field.id, e)}
-              disabled={togglingFavorite === field.id}
-              className="absolute top-3 right-3 backdrop-blur-glass bg-white/80 p-2 rounded-lg shadow-md hover:bg-white hover:shadow-lg transition-all duration-200"
-              title={
-                favoriteIds.includes(field.id) ? "Quitar de favoritos" : "Agregar a favoritos"
-              }
-            >
-              {favoriteIds.includes(field.id) ? (
-                <Favorite className="w-4 h-4 text-red-500" />
-              ) : (
-                <FavoriteBorder className="w-4 h-4 text-surface-400" />
-              )}
-            </button>
-          )}
+            {isClient && (
+              <button
+                type="button"
+                onClick={(e) => onToggleFavorite(field.id, e)}
+                disabled={togglingFavorite === field.id}
+                className={[
+                  "inline-flex items-center justify-center w-9 h-9 rounded-lg shadow-sm transition-all duration-200",
+                  "bg-white/95 backdrop-blur-sm hover:bg-white hover:shadow-md",
+                  "focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/30",
+                  togglingFavorite === field.id ? "opacity-60 cursor-wait" : "",
+                ].join(" ")}
+                aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
+              >
+                {isFav ? (
+                  <Heart className="h-[18px] w-[18px] fill-rose-500 text-rose-500" strokeWidth={2} aria-hidden />
+                ) : (
+                  <Heart className="h-[18px] w-[18px] text-slate-500" strokeWidth={2} aria-hidden />
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Info */}
-        <div className="p-5">
-          <h3 className="font-bold font-heading text-primary-900 text-xl mb-3 leading-tight">
-            {field.name || "Nombre no disponible"}
+        <div className="flex-1 flex flex-col p-5">
+          <h3 className="font-semibold font-heading text-slate-900 text-lg leading-tight mb-3 line-clamp-1">
+            {field.name || "Sin nombre"}
           </h3>
 
-          <div className="space-y-2 mb-5">
+          <div className="space-y-2 mb-5 text-sm text-slate-600">
             {field.address && (
-              <div className="flex items-center gap-2 text-sm text-surface-500">
-                <LocationOn className="w-4 h-4 flex-shrink-0 text-primary" />
+              <div className="flex items-center gap-2 truncate">
+                <MapPin className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
                 <span className="truncate">{field.address}</span>
               </div>
             )}
             {field.pricePerHour && (
-              <div className="flex items-center gap-2 text-sm font-semibold text-primary-900">
-                <AttachMoney className="w-4 h-4 flex-shrink-0 text-cta" />
-                ${field.pricePerHour} / hora
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <Banknote className="h-4 w-4 shrink-0 text-cta-600" strokeWidth={2} aria-hidden />
+                <span>${field.pricePerHour}</span>
+                <span className="text-xs font-normal text-slate-500">/ hora</span>
               </div>
             )}
             {field.openingTime && field.closingTime && (
-              <div className="flex items-center gap-2 text-sm text-surface-500">
-                <AccessTime className="w-4 h-4 flex-shrink-0 text-primary" />
-                {field.openingTime} - {field.closingTime}
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
+                <span>
+                  {field.openingTime} - {field.closingTime}
+                </span>
               </div>
             )}
           </div>
 
-          {/* Acciones según rol */}
-          {userProfile?.role === "admin" && field.status === "pending" ? (
-            <div className="flex gap-2">
+          <div className="mt-auto">
+            {isAdmin && field.status === "pending" ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  disabled={loadingAction}
+                  onClick={() => onAction(field, "approve")}
+                >
+                  Aprobar
+                </Button>
+                <Button
+                  variant="danger"
+                  size="md"
+                  fullWidth
+                  disabled={loadingAction}
+                  onClick={() => onAction(field, "reject")}
+                >
+                  Rechazar
+                </Button>
+              </div>
+            ) : (
               <Button
-                variant="primary"
+                variant={isClient ? "primary" : "secondary"}
                 size="md"
                 fullWidth
-                disabled={loadingAction}
-                onClick={() => onAction(field, "approve")}
-              >
-                Aprobar
-              </Button>
-              <Button
-                variant="danger"
-                size="md"
-                fullWidth
-                disabled={loadingAction}
-                onClick={() => onAction(field, "reject")}
-              >
-                Rechazar
-              </Button>
-            </div>
-          ) : (
-            <div ref={reserveButtonRef}>
-              <Button
-                variant={userProfile?.role === "cliente" ? "primary" : "secondary"}
-                size="md"
-                fullWidth
-                disabled={userProfile?.role !== "cliente"}
+                disabled={!isClient}
                 onClick={() => onAction(field, "reserve")}
               >
-                {userProfile?.role === "cliente"
-                  ? "Reservar Ahora"
-                  : userProfile?.role === "admin"
-                  ? "Ver Detalles"
-                  : "Ver Disponibilidad"}
+                {isClient
+                  ? "Reservar ahora"
+                  : isAdmin
+                  ? "Ver detalles"
+                  : "Ver disponibilidad"}
               </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </GlassCard>
+      </article>
     );
   }
 );
 
 FieldCard.displayName = "FieldCard";
+
+FieldCard.propTypes = {
+  field: PropTypes.object.isRequired,
+  userProfile: PropTypes.object,
+  favoriteIds: PropTypes.array,
+  togglingFavorite: PropTypes.string,
+  statusMap: PropTypes.object,
+  onEdit: PropTypes.func,
+  onToggleFavorite: PropTypes.func,
+  onAction: PropTypes.func.isRequired,
+  loadingAction: PropTypes.bool,
+};
 
 export default FieldCard;

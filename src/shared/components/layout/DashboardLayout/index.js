@@ -15,12 +15,20 @@ function DashboardLayout({ children }) {
   return (
     <div
       className={[
-        "relative p-4 md:p-6 transition-all duration-300 ease-in-out min-h-screen",
-        "bg-gradient-to-br from-surface via-primary-50/30 to-secondary-50/30",
-        miniSidenav ? "xl:ml-[120px]" : "xl:ml-[274px]",
+        "relative min-h-screen bg-surface",
+        "transition-[margin] duration-300 ease-in-out",
+        miniSidenav ? "xl:ml-[96px]" : "xl:ml-[280px]",
       ].join(" ")}
     >
-      {children}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none fixed inset-0 -z-10"
+        style={{
+          backgroundImage:
+            "radial-gradient(1200px 600px at 0% 0%, rgba(30,58,138,0.06), transparent 60%), radial-gradient(900px 500px at 100% 100%, rgba(249,115,22,0.05), transparent 60%)",
+        }}
+      />
+      <div className="relative px-4 sm:px-6 lg:px-8 py-6 lg:py-8">{children}</div>
     </div>
   );
 }

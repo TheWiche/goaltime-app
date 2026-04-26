@@ -1,67 +1,60 @@
 import PropTypes from "prop-types";
-import Icon from "@mui/material/Icon";
-import { MDBox } from "shared/components/md-shims";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useMaterialUIController } from "shared/context";
 
 function DataTableHeadCell({ width, children, sorted, align, ...rest }) {
   const [controller] = useMaterialUIController();
   const { darkMode } = controller;
 
+  const alignClass =
+    align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+
   return (
-    <MDBox
-      component="th"
-      width={width}
-      py={1.5}
-      px={3}
-      sx={({ palette: { light }, borders: { borderWidth } }) => ({
-        borderBottom: `${borderWidth[1]} solid ${light.main}`,
-      })}
+    <th
+      scope="col"
+      className={[
+        "border-b border-slate-200 py-3 px-3",
+        darkMode ? "text-white/90" : "text-slate-600",
+        alignClass,
+      ].join(" ")}
+      style={width && width !== "auto" ? { width } : undefined}
     >
-      <MDBox
+      <div
         {...rest}
-        position="relative"
-        textAlign={align}
-        color={darkMode ? "white" : "secondary"}
-        opacity={0.7}
-        sx={({ typography: { size, fontWeightBold } }) => ({
-          fontSize: size.xxs,
-          fontWeight: fontWeightBold,
-          textTransform: "uppercase",
-          cursor: sorted && "pointer",
-          userSelect: sorted && "none",
-        })}
+        className={[
+          "relative text-[10px] font-bold uppercase tracking-wide",
+          sorted ? "cursor-pointer select-none" : "",
+          alignClass,
+        ].join(" ")}
       >
         {children}
         {sorted && (
-          <MDBox
-            position="absolute"
-            top={0}
-            right={align !== "right" ? "16px" : 0}
-            left={align === "right" ? "-5px" : "unset"}
-            sx={({ typography: { size } }) => ({
-              fontSize: size.lg,
-            })}
+          <span
+            className={[
+              "absolute top-1/2 -translate-y-1/2 inline-flex flex-col leading-none",
+              align === "right" ? "left-0" : "right-4",
+            ].join(" ")}
           >
-            <MDBox
-              position="absolute"
-              top={-6}
-              color={sorted === "asce" ? "text" : "secondary"}
-              opacity={sorted === "asce" ? 1 : 0.5}
-            >
-              <Icon>arrow_drop_up</Icon>
-            </MDBox>
-            <MDBox
-              position="absolute"
-              top={0}
-              color={sorted === "desc" ? "text" : "secondary"}
-              opacity={sorted === "desc" ? 1 : 0.5}
-            >
-              <Icon>arrow_drop_down</Icon>
-            </MDBox>
-          </MDBox>
+            <ChevronUp
+              className={[
+                "h-4 w-4 -mb-1",
+                sorted === "asce" ? "text-slate-900 opacity-100" : "text-slate-400 opacity-50",
+              ].join(" ")}
+              strokeWidth={2}
+              aria-hidden
+            />
+            <ChevronDown
+              className={[
+                "h-4 w-4",
+                sorted === "desc" ? "text-slate-900 opacity-100" : "text-slate-400 opacity-50",
+              ].join(" ")}
+              strokeWidth={2}
+              aria-hidden
+            />
+          </span>
         )}
-      </MDBox>
-    </MDBox>
+      </div>
+    </th>
   );
 }
 

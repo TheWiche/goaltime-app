@@ -1,75 +1,36 @@
+import PropTypes from "prop-types";
+
 /**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-*/
+ * Drawer lateral sin MUI: aside fijo + ancho responsive (desktop mini / full).
+ */
+function SidenavRoot({ children, ownerState, ...rest }) {
+  const { miniSidenav } = ownerState;
 
-// @mui material components
-import Drawer from "@mui/material/Drawer";
-import { styled } from "@mui/material/styles";
+  return (
+    <aside
+      {...rest}
+      className={[
+        "fixed left-0 top-0 z-[1100] flex h-screen flex-col border-r border-slate-200 bg-white",
+        "transition-[width,transform] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+        "w-[280px] max-w-[100vw]",
+        miniSidenav
+          ? "max-xl:pointer-events-none max-xl:-translate-x-full xl:w-24 xl:translate-x-0 xl:overflow-x-hidden"
+          : "translate-x-0 xl:w-[280px]",
+      ].join(" ")}
+    >
+      {children}
+    </aside>
+  );
+}
 
-export default styled(Drawer)(({ theme, ownerState }) => {
-  const { transparentSidenav, miniSidenav } = ownerState;
+SidenavRoot.propTypes = {
+  children: PropTypes.node,
+  ownerState: PropTypes.shape({
+    miniSidenav: PropTypes.bool,
+    transparentSidenav: PropTypes.bool,
+    whiteSidenav: PropTypes.bool,
+    darkMode: PropTypes.bool,
+  }).isRequired,
+};
 
-  const sidebarWidth = 250;
-  const glassShadow = "0 8px 32px 0 rgba(31, 38, 135, 0.2)";
-  
-  let backgroundValue = "rgba(255, 255, 255, 0.85)";
-  let backdropFilter = "blur(16px)";
-  let border = "1px solid rgba(30, 58, 138, 0.15)";
-
-  if (transparentSidenav) {
-    backgroundValue = "rgba(255, 255, 255, 0.6)";
-    backdropFilter = "blur(12px)";
-  }
-
-  const drawerOpenStyles = () => ({
-    background: backgroundValue,
-    backdropFilter: backdropFilter,
-    border: "none",
-    borderRight: border,
-    transform: "translateX(0)",
-    transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-    display: "flex",
-    flexDirection: "column",
-
-    "@media (min-width: 1280px)": {
-      boxShadow: transparentSidenav ? "none" : glassShadow,
-      marginBottom: transparentSidenav ? 0 : "inherit",
-      left: "0",
-      width: sidebarWidth,
-      transform: "translateX(0)",
-      transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-    },
-  });
-
-  const drawerCloseStyles = () => ({
-    background: backgroundValue,
-    backdropFilter: backdropFilter,
-    border: "none",
-    borderRight: border,
-    transform: "translateX(-320px)",
-    transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-    display: "flex",
-    flexDirection: "column",
-
-    "@media (min-width: 1280px)": {
-      boxShadow: transparentSidenav ? "none" : glassShadow,
-      marginBottom: transparentSidenav ? 0 : "inherit",
-      left: "0",
-      width: "96px",
-      overflowX: "hidden",
-      transform: "translateX(0)",
-      transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
-    },
-  });
-
-  return {
-    "& .MuiDrawer-paper": {
-      boxShadow: glassShadow,
-      border: "none",
-
-      ...(miniSidenav ? drawerCloseStyles() : drawerOpenStyles()),
-    },
-  };
-});
+export default SidenavRoot;

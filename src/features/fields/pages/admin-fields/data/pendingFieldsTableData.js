@@ -7,8 +7,8 @@ import { collection, onSnapshot, query, where, orderBy } from "firebase/firestor
 import { db } from "shared/services/firebaseService";
 import useDebounce from "shared/hooks/useDebounce";
 
-import Chip from "@mui/material/Chip";
-import Icon from "@mui/material/Icon";
+import { Check, X } from "lucide-react";
+import { StatusPill } from "shared/components/ui";
 
 export default function usePendingFieldsTableData(searchTerm, statusFilter, onApprove, onReject) {
   const [fields, setFields] = useState([]);
@@ -134,12 +134,12 @@ export default function usePendingFieldsTableData(searchTerm, statusFilter, onAp
     };
   }, [debouncedSearchTerm, statusFilter]);
 
-  const getStatusColor = (status) => {
+  const getStatusTone = (status) => {
     if (status === "approved") return "success";
     if (status === "pending") return "warning";
-    if (status === "rejected") return "error";
-    if (status === "disabled") return "secondary";
-    return "default";
+    if (status === "rejected") return "danger";
+    if (status === "disabled") return "neutral";
+    return "neutral";
   };
 
   const getStatusText = (status) => {
@@ -170,14 +170,11 @@ export default function usePendingFieldsTableData(searchTerm, statusFilter, onAp
         </MDTypography>
       ),
       estado: (
-        <MDBox ml={-1}>
-          <Chip
-            label={getStatusText(field.status)}
-            color={getStatusColor(field.status)}
-            size="small"
-            sx={{ fontWeight: "bold" }}
-          />
-        </MDBox>
+        <div className="-ml-1 flex justify-center">
+          <StatusPill tone={getStatusTone(field.status)} size="sm" className="font-bold">
+            {getStatusText(field.status)}
+          </StatusPill>
+        </div>
       ),
       fecha_creacion: (
         <MDTypography variant="caption" color="text" fontWeight="medium">
@@ -187,34 +184,32 @@ export default function usePendingFieldsTableData(searchTerm, statusFilter, onAp
         </MDTypography>
       ),
       acciones: (
-        <MDBox display="flex" gap={1} justifyContent="center" flexWrap="wrap">
+        <div className="flex flex-wrap justify-center gap-2">
           {field.status === "pending" && (
             <>
               <MDButton
-                variant="gradient"
+                variant="contained"
                 color="success"
                 size="small"
+                className="inline-flex items-center gap-1.5 !bg-emerald-600 !text-white hover:!bg-emerald-700"
                 onClick={() => onApprove(field)}
               >
-                <Icon fontSize="small" sx={{ mr: 0.5 }}>
-                  check
-                </Icon>
+                <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                 Aprobar
               </MDButton>
               <MDButton
-                variant="gradient"
+                variant="contained"
                 color="error"
                 size="small"
+                className="inline-flex items-center gap-1.5 !bg-rose-600 !text-white hover:!bg-rose-700"
                 onClick={() => onReject(field)}
               >
-                <Icon fontSize="small" sx={{ mr: 0.5 }}>
-                  close
-                </Icon>
+                <X className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
                 Rechazar
               </MDButton>
             </>
           )}
-        </MDBox>
+        </div>
       ),
     };
   });

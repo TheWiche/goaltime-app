@@ -23,15 +23,25 @@ import Homepage from "features/public/pages/homepage";
 import GuestRoute from "shared/components/routing/GuestRoute";
 import ProtectedRoute from "shared/components/routing/ProtectedRoute";
 
-import Icon from "@mui/material/Icon";
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  CalendarDays,
+  Goal,
+  User,
+  LogIn,
+  ClipboardList,
+} from "lucide-react";
+
+const navIcon = (IconCmp) => <IconCmp className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />;
 
 const routes = [
-  // --- Rutas Protegidas (Solo para usuarios logueados) ---
   {
     type: "collapse",
     name: "Dashboard",
     key: "dashboard",
-    icon: <Icon fontSize="small">dashboard</Icon>,
+    icon: navIcon(LayoutDashboard),
     route: "/dashboard",
     component: (
       <ProtectedRoute>
@@ -43,7 +53,7 @@ const routes = [
     type: "collapse",
     name: "Usuarios",
     key: "admin-users",
-    icon: <Icon fontSize="small">people</Icon>,
+    icon: navIcon(Users),
     route: "/admin/users",
     component: (
       <ProtectedRoute>
@@ -55,7 +65,7 @@ const routes = [
     type: "collapse",
     name: "Mis Canchas",
     key: "associate-fields",
-    icon: <Icon fontSize="small">stadium</Icon>,
+    icon: navIcon(Building2),
     route: "/associate/fields",
     component: (
       <ProtectedRoute>
@@ -67,7 +77,7 @@ const routes = [
     type: "collapse",
     name: "Reservas",
     key: "associate-reservations",
-    icon: <Icon fontSize="small">event</Icon>,
+    icon: navIcon(CalendarDays),
     route: "/associate/reservations",
     component: (
       <ProtectedRoute>
@@ -79,7 +89,7 @@ const routes = [
     type: "collapse",
     name: "Canchas",
     key: "canchas",
-    icon: <Icon fontSize="small">sports_soccer</Icon>,
+    icon: navIcon(Goal),
     route: "/canchas",
     component: (
       <ProtectedRoute>
@@ -91,7 +101,7 @@ const routes = [
     type: "collapse",
     name: "Mis Reservaciones",
     key: "reservations",
-    icon: <Icon fontSize="small">event</Icon>,
+    icon: navIcon(CalendarDays),
     route: "/reservations",
     component: (
       <ProtectedRoute>
@@ -102,7 +112,7 @@ const routes = [
   {
     name: "Profile",
     key: "profile",
-    icon: <Icon fontSize="small">person</Icon>,
+    icon: navIcon(User),
     route: "/profile",
     component: (
       <ProtectedRoute>
@@ -111,12 +121,11 @@ const routes = [
     ),
   },
 
-  // --- Rutas de Invitado (Solo para usuarios NO logueados) ---
   {
     type: "collapse",
     name: "Sign In",
     key: "sign-in",
-    icon: <Icon fontSize="small">login</Icon>,
+    icon: navIcon(LogIn),
     route: "/authentication/sign-in",
     component: (
       <GuestRoute>
@@ -128,7 +137,7 @@ const routes = [
     type: "collapse",
     name: "Sign Up",
     key: "sign-up",
-    icon: <Icon fontSize="small">assignment</Icon>,
+    icon: navIcon(ClipboardList),
     route: "/authentication/sign-up",
     component: (
       <GuestRoute>
@@ -169,7 +178,6 @@ const routes = [
     component: <HandleFirebaseAction />,
   },
 
-  // --- Rutas Públicas (Visibles para TODOS, pero no en el menú) ---
   {
     key: "homepage",
     route: "/",

@@ -1,827 +1,388 @@
-import { MDBox, MDTypography, MDButton, MDSnackbar } from "shared/components/md-shims";
-// src/layouts/reservations/components/TicketModal/index.js
-
 import { useRef, useState } from "react";
 import PropTypes from "prop-types";
-import Dialog from "@mui/material/Dialog";
-import DialogContent from "@mui/material/DialogContent";
-import IconButton from "@mui/material/IconButton";
-import Card from "@mui/material/Card";
-import Divider from "@mui/material/Divider";
-import Chip from "@mui/material/Chip";
-import Grid from "@mui/material/Grid";
-import Icon from "@mui/material/Icon";
-
-// GoalTime App components
+import {
+  Ticket,
+  Mail,
+  Download,
+  Trophy,
+  MapPin,
+  User,
+  Calendar,
+  Clock,
+  Banknote,
+  QrCode,
+  Loader2,
+} from "lucide-react";
+import { Modal, Button, SectionCard, StatusPill, Toast } from "shared/components/ui";
 import { sendTicketByEmail } from "shared/services/firebaseService";
+
+const STATUS_MAP = {
+  pending: { label: "Pendiente", tone: "warning" },
+  confirmed: { label: "Confirmada", tone: "success" },
+  cancelled: { label: "Cancelada", tone: "danger" },
+  completed: { label: "Completada", tone: "info" },
+};
+
+function formatDate(dateValue) {
+  if (!dateValue) return "N/A";
+  let date;
+  if (dateValue.seconds) date = new Date(dateValue.seconds * 1000);
+  else if (typeof dateValue === "string" && dateValue.includes("-")) date = new Date(dateValue);
+  else if (dateValue instanceof Date) date = dateValue;
+  else return "N/A";
+  return date.toLocaleDateString("es-ES", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function formatDateTime(timestamp) {
+  if (!timestamp) return "N/A";
+  const date = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
+  return date.toLocaleDateString("es-ES", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function buildTicketHTML(reservation, userProfile) {
+  const status = STATUS_MAP[reservation?.status]?.label || reservation?.status || "N/A";
+  const statusBg = {
+    success: "#16a34a",
+    warning: "#f59e0b",
+    danger: "#e11d48",
+    info: "#3B82F6",
+  }[STATUS_MAP[reservation?.status]?.tone] || "#94a3b8";
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ticket GoalTime</title>
+<style>
+  @page{ size:A4; margin:14mm }
+  body{ font-family:'Open Sans',system-ui,-apple-system,sans-serif; color:#0f172a; margin:0; padding:0 }
+  .wrap{ max-width:640px; margin:0 auto; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden }
+  .head{ background:linear-gradient(135deg,#1e3a8a,#3b82f6); color:#fff; padding:24px 28px }
+  .brand{ font-family:'Poppins',sans-serif; font-weight:700; font-size:22px; margin:0 }
+  .lead{ font-size:12px; opacity:.85; margin:4px 0 0 }
+  .body{ padding:24px 28px; background:#fff }
+  h3{ font-family:'Poppins',sans-serif; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin:0 0 10px; padding-bottom:6px; border-bottom:1px solid #e2e8f0 }
+  .row{ display:flex; justify-content:space-between; padding:6px 0; font-size:13px }
+  .lbl{ color:#64748b }
+  .val{ color:#0f172a; font-weight:600; text-align:right }
+  .pill{ display:inline-block; padding:3px 10px; border-radius:9999px; color:#fff; font-size:11px; font-weight:600; background:${statusBg} }
+  .qr{ margin:18px auto; width:120px; height:120px; border:2px dashed #cbd5e1; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:11px; text-align:center }
+  .total{ font-size:20px; font-weight:700; color:#16a34a }
+  .foot{ background:#f8fafc; padding:14px 28px; border-top:1px solid #e2e8f0; text-align:center; font-size:11px; color:#64748b }
+  section{ margin-bottom:18px }
+</style></head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <p class="brand">GoalTime</p>
+      <p class="lead">Ticket de reserva deportiva</p>
+    </div>
+    <div class="body">
+      <section>
+        <h3>Reserva</h3>
+        <div class="row"><span class="lbl">Número</span><span class="val">#${
+          reservation?.id?.substring(0, 8).toUpperCase() || "N/A"
+        }</span></div>
+        <div class="row"><span class="lbl">Fecha</span><span class="val">${formatDate(
+          reservation?.date
+        )}</span></div>
+        <div class="row"><span class="lbl">Horario</span><span class="val">${
+          reservation?.startTime || "N/A"
+        } – ${reservation?.endTime || "N/A"}</span></div>
+        <div class="row"><span class="lbl">Estado</span><span class="val"><span class="pill">${status}</span></span></div>
+      </section>
+      <section>
+        <h3>Cancha</h3>
+        <div class="row"><span class="lbl">Nombre</span><span class="val">${
+          reservation?.fieldName || "N/A"
+        }</span></div>
+        <div class="row"><span class="lbl">Dirección</span><span class="val">${
+          reservation?.fieldAddress || "N/A"
+        }</span></div>
+      </section>
+      <section>
+        <h3>Cliente</h3>
+        <div class="row"><span class="lbl">Nombre</span><span class="val">${
+          userProfile?.name || "N/A"
+        }</span></div>
+        <div class="row"><span class="lbl">Email</span><span class="val">${
+          userProfile?.email || "N/A"
+        }</span></div>
+      </section>
+      <section>
+        <h3>Pago</h3>
+        <div class="row"><span class="lbl">Total pagado</span><span class="val total">$${
+          reservation?.totalPrice || "0"
+        }</span></div>
+        <div class="row"><span class="lbl">Creada</span><span class="val">${
+          reservation?.createdAt ? formatDateTime(reservation.createdAt) : "N/A"
+        }</span></div>
+      </section>
+      <div class="qr">QR · #${reservation?.id?.substring(0, 8).toUpperCase() || "N/A"}</div>
+    </div>
+    <div class="foot">© ${new Date().getFullYear()} GoalTime · Válido sólo para la fecha y hora indicadas.</div>
+  </div>
+</body></html>`;
+}
 
 function TicketModal({ open, onClose, reservation, userProfile }) {
   const ticketRef = useRef(null);
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, color: "info", message: "" });
+  const [snackbar, setSnackbar] = useState({ open: false, severity: "info", message: "" });
 
-  const formatDate = (dateValue) => {
-    if (!dateValue) return "N/A";
+  if (!reservation) return null;
 
-    if (dateValue.seconds) {
-      const date = new Date(dateValue.seconds * 1000);
-      return date.toLocaleDateString("es-ES", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    }
-
-    if (typeof dateValue === "string" && dateValue.includes("-")) {
-      const date = new Date(dateValue);
-      return date.toLocaleDateString("es-ES", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    }
-
-    if (dateValue instanceof Date) {
-      return dateValue.toLocaleDateString("es-ES", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    }
-
-    return "N/A";
-  };
-
-  const formatDateTime = (timestamp) => {
-    if (!timestamp) return "N/A";
-    const date = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
-    return date.toLocaleDateString("es-ES", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const getReservationStatusColor = (status) => {
-    const statusMap = {
-      pending: "warning",
-      confirmed: "success",
-      cancelled: "error",
-      completed: "info",
-    };
-    return statusMap[status] || "secondary";
-  };
-
-  const getReservationStatusText = (status) => {
-    const statusMap = {
-      pending: "Pendiente",
-      confirmed: "Confirmada",
-      cancelled: "Cancelada",
-      completed: "Completada",
-    };
-    return statusMap[status] || status;
-  };
+  const statusInfo = STATUS_MAP[reservation.status] || { label: reservation.status, tone: "neutral" };
 
   const handleSendEmail = async () => {
-    if (!reservation || !userProfile?.email) {
-      setSnackbar({
-        open: true,
-        color: "error",
-        message: "No se puede enviar el ticket. Información incompleta.",
-      });
+    if (!userProfile?.email) {
+      setSnackbar({ open: true, severity: "error", message: "No se puede enviar el ticket. Información incompleta." });
       return;
     }
-
     setSendingEmail(true);
     try {
-      // Generar el HTML del ticket
-      const ticketHTML = generateTicketHTML();
-
       await sendTicketByEmail({
         email: userProfile.email,
         reservationId: reservation.id,
         reservationData: reservation,
-        userProfile: userProfile,
-        ticketHTML: ticketHTML,
+        userProfile,
+        ticketHTML: buildTicketHTML(reservation, userProfile),
       });
-
-      setSnackbar({
-        open: true,
-        color: "success",
-        message: "Ticket enviado exitosamente a tu correo electrónico.",
-      });
+      setSnackbar({ open: true, severity: "success", message: "Ticket enviado a tu correo." });
     } catch (error) {
-      console.error("Error al enviar ticket por correo:", error);
+      console.error("Error al enviar ticket:", error);
       setSnackbar({
         open: true,
-        color: "error",
-        message: error.message || "Error al enviar el ticket. Inténtalo de nuevo.",
+        severity: "error",
+        message: error.message || "Error al enviar el ticket.",
       });
     } finally {
       setSendingEmail(false);
     }
   };
 
-  const generateTicketHTML = () => {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Ticket de Reserva - ${reservation?.fieldName || "Cancha"}</title>
-          <style>
-            @page {
-              size: A4;
-              margin: 10mm;
-            }
-            body {
-              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              margin: 0;
-              padding: 10px;
-              color: #333;
-            }
-            .ticket-container {
-              max-width: 100%;
-              margin: 0 auto;
-              background: white;
-              border: 2px solid #e0e0e0;
-              border-radius: 8px;
-              padding: 15px;
-            }
-            .ticket-header {
-              text-align: center;
-              border-bottom: 2px solid #1976d2;
-              padding-bottom: 10px;
-              margin-bottom: 15px;
-            }
-            .ticket-header h1 {
-              color: #1976d2;
-              margin: 0 0 5px 0;
-              font-size: 22px;
-            }
-            .ticket-header p {
-              color: #666;
-              margin: 0;
-              font-size: 12px;
-            }
-            .ticket-section {
-              margin-bottom: 12px;
-            }
-            .ticket-section h3 {
-              color: #1976d2;
-              font-size: 14px;
-              margin-bottom: 8px;
-              border-bottom: 1px solid #e0e0e0;
-              padding-bottom: 4px;
-            }
-            .ticket-row {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 6px;
-              padding: 4px 0;
-              font-size: 12px;
-            }
-            .ticket-label {
-              font-weight: 600;
-              color: #555;
-            }
-            .ticket-value {
-              color: #333;
-              text-align: right;
-            }
-            .ticket-status {
-              display: inline-block;
-              padding: 4px 12px;
-              border-radius: 15px;
-              font-weight: 600;
-              font-size: 11px;
-              margin-top: 5px;
-            }
-            .ticket-footer {
-              margin-top: 15px;
-              padding-top: 10px;
-              border-top: 1px solid #e0e0e0;
-              text-align: center;
-              color: #666;
-              font-size: 10px;
-            }
-            .ticket-qr-placeholder {
-              width: 100px;
-              height: 100px;
-              border: 2px dashed #ccc;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              margin: 10px auto;
-              border-radius: 6px;
-              background: #f5f5f5;
-              font-size: 10px;
-            }
-            .ticket-qr-placeholder p {
-              margin: 0;
-              text-align: center;
-              line-height: 1.3;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="ticket-container">
-            <div class="ticket-header">
-              <h1>GoalTime</h1>
-              <p>Ticket de Reserva Deportiva</p>
-            </div>
-            
-            <div class="ticket-section">
-              <h3>Información de la Reserva</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Número de Reserva:</span>
-                <span class="ticket-value">#${
-                  reservation?.id?.substring(0, 8).toUpperCase() || "N/A"
-                }</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Fecha de Reserva:</span>
-                <span class="ticket-value">${formatDate(reservation?.date)}</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Hora:</span>
-                <span class="ticket-value">${reservation?.startTime || "N/A"} - ${
-      reservation?.endTime || "N/A"
-    }</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Estado:</span>
-                <span class="ticket-value">
-                  <span class="ticket-status" style="background-color: ${
-                    getReservationStatusColor(reservation?.status) === "success"
-                      ? "#4caf50"
-                      : getReservationStatusColor(reservation?.status) === "warning"
-                      ? "#ff9800"
-                      : getReservationStatusColor(reservation?.status) === "error"
-                      ? "#f44336"
-                      : "#9e9e9e"
-                  }; color: white;">
-                    ${getReservationStatusText(reservation?.status)}
-                  </span>
-                </span>
-              </div>
-            </div>
-
-            <div class="ticket-section">
-              <h3>Información de la Cancha</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Nombre:</span>
-                <span class="ticket-value">${reservation?.fieldName || "N/A"}</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Dirección:</span>
-                <span class="ticket-value">${reservation?.fieldAddress || "N/A"}</span>
-              </div>
-            </div>
-
-            <div class="ticket-section">
-              <h3>Información del Cliente</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Nombre:</span>
-                <span class="ticket-value">${userProfile?.name || "N/A"}</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Email:</span>
-                <span class="ticket-value">${userProfile?.email || "N/A"}</span>
-              </div>
-            </div>
-
-            <div class="ticket-section">
-              <h3>Información de Pago</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Total Pagado:</span>
-                <span class="ticket-value" style="font-size: 20px; font-weight: bold; color: #4caf50;">
-                  $${reservation?.totalPrice || "0"}
-                </span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Fecha de Creación:</span>
-                <span class="ticket-value">${
-                  reservation?.createdAt ? formatDateTime(reservation.createdAt) : "N/A"
-                }</span>
-              </div>
-            </div>
-
-            <div class="ticket-qr-placeholder">
-              <p style="color: #999; font-size: 12px;">Código QR<br/>(${
-                reservation?.id?.substring(0, 8).toUpperCase() || "N/A"
-              })</p>
-            </div>
-
-            <div class="ticket-footer">
-              <p>© ${new Date().getFullYear()} GoalTime. Todos los derechos reservados.</p>
-              <p>Este ticket es válido para la fecha y hora indicadas.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-  };
-
   const handleDownloadPDF = () => {
-    if (!ticketRef.current) return;
-
-    // Crear un nuevo contenido HTML para el PDF
     const printWindow = window.open("", "_blank");
-    const ticketContent = ticketRef.current.innerHTML;
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Ticket de Reserva - ${reservation?.fieldName || "Cancha"}</title>
-          <style>
-            @page {
-              size: A4;
-              margin: 10mm;
-            }
-            body {
-              font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-              margin: 0;
-              padding: 10px;
-              color: #333;
-            }
-            .ticket-container {
-              max-width: 100%;
-              margin: 0 auto;
-              background: white;
-              border: 2px solid #e0e0e0;
-              border-radius: 8px;
-              padding: 15px;
-            }
-            .ticket-header {
-              text-align: center;
-              border-bottom: 2px solid #1976d2;
-              padding-bottom: 10px;
-              margin-bottom: 15px;
-            }
-            .ticket-header h1 {
-              color: #1976d2;
-              margin: 0 0 5px 0;
-              font-size: 22px;
-            }
-            .ticket-header p {
-              color: #666;
-              margin: 0;
-              font-size: 12px;
-            }
-            .ticket-section {
-              margin-bottom: 12px;
-            }
-            .ticket-section h3 {
-              color: #1976d2;
-              font-size: 14px;
-              margin-bottom: 8px;
-              border-bottom: 1px solid #e0e0e0;
-              padding-bottom: 4px;
-            }
-            .ticket-row {
-              display: flex;
-              justify-content: space-between;
-              margin-bottom: 6px;
-              padding: 4px 0;
-              font-size: 12px;
-            }
-            .ticket-label {
-              font-weight: 600;
-              color: #555;
-            }
-            .ticket-value {
-              color: #333;
-              text-align: right;
-            }
-            .ticket-status {
-              display: inline-block;
-              padding: 4px 12px;
-              border-radius: 15px;
-              font-weight: 600;
-              font-size: 11px;
-              margin-top: 5px;
-            }
-            .ticket-footer {
-              margin-top: 15px;
-              padding-top: 10px;
-              border-top: 1px solid #e0e0e0;
-              text-align: center;
-              color: #666;
-              font-size: 10px;
-            }
-            .ticket-qr-placeholder {
-              width: 100px;
-              height: 100px;
-              border: 2px dashed #ccc;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              margin: 10px auto;
-              border-radius: 6px;
-              background: #f5f5f5;
-              font-size: 10px;
-            }
-            .ticket-qr-placeholder p {
-              margin: 0;
-              text-align: center;
-              line-height: 1.3;
-            }
-            @media print {
-              body {
-                margin: 0;
-                padding: 0;
-              }
-              .ticket-container {
-                border: none;
-                box-shadow: none;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="ticket-container">
-            <div class="ticket-header">
-              <h1>GoalTime</h1>
-              <p>Ticket de Reserva Deportiva</p>
-            </div>
-            
-            <div class="ticket-section">
-              <h3>Información de la Reserva</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Número de Reserva:</span>
-                <span class="ticket-value">#${
-                  reservation?.id?.substring(0, 8).toUpperCase() || "N/A"
-                }</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Fecha de Reserva:</span>
-                <span class="ticket-value">${formatDate(reservation?.date)}</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Hora:</span>
-                <span class="ticket-value">${reservation?.startTime || "N/A"} - ${
-      reservation?.endTime || "N/A"
-    }</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Estado:</span>
-                <span class="ticket-value">
-                  <span class="ticket-status" style="background-color: ${
-                    getReservationStatusColor(reservation?.status) === "success"
-                      ? "#4caf50"
-                      : getReservationStatusColor(reservation?.status) === "warning"
-                      ? "#ff9800"
-                      : getReservationStatusColor(reservation?.status) === "error"
-                      ? "#f44336"
-                      : "#9e9e9e"
-                  }; color: white;">
-                    ${getReservationStatusText(reservation?.status)}
-                  </span>
-                </span>
-              </div>
-            </div>
-
-            <div class="ticket-section">
-              <h3>Información de la Cancha</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Nombre:</span>
-                <span class="ticket-value">${reservation?.fieldName || "N/A"}</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Dirección:</span>
-                <span class="ticket-value">${reservation?.fieldAddress || "N/A"}</span>
-              </div>
-            </div>
-
-            <div class="ticket-section">
-              <h3>Información del Cliente</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Nombre:</span>
-                <span class="ticket-value">${userProfile?.name || "N/A"}</span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Email:</span>
-                <span class="ticket-value">${userProfile?.email || "N/A"}</span>
-              </div>
-            </div>
-
-            <div class="ticket-section">
-              <h3>Información de Pago</h3>
-              <div class="ticket-row">
-                <span class="ticket-label">Total Pagado:</span>
-                <span class="ticket-value" style="font-size: 20px; font-weight: bold; color: #4caf50;">
-                  $${reservation?.totalPrice || "0"}
-                </span>
-              </div>
-              <div class="ticket-row">
-                <span class="ticket-label">Fecha de Creación:</span>
-                <span class="ticket-value">${
-                  reservation?.createdAt ? formatDateTime(reservation.createdAt) : "N/A"
-                }</span>
-              </div>
-            </div>
-
-            <div class="ticket-qr-placeholder">
-              <p style="color: #999; font-size: 12px;">Código QR<br/>(${
-                reservation?.id?.substring(0, 8).toUpperCase() || "N/A"
-              })</p>
-            </div>
-
-            <div class="ticket-footer">
-              <p>© ${new Date().getFullYear()} GoalTime. Todos los derechos reservados.</p>
-              <p>Este ticket es válido para la fecha y hora indicadas.</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-
+    if (!printWindow) return;
+    printWindow.document.write(buildTicketHTML(reservation, userProfile));
     printWindow.document.close();
-
-    // Esperar a que el contenido se cargue y luego imprimir/descargar
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
+    setTimeout(() => printWindow.print(), 300);
   };
-
-  if (!reservation) return null;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <MDBox
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        p={2}
-        borderBottom="1px solid"
-        borderColor="divider"
-      >
-        <MDTypography variant="h5" fontWeight="bold">
-          Ticket de Reserva
-        </MDTypography>
-        <IconButton onClick={onClose} size="small">
-          <Icon>close</Icon>
-        </IconButton>
-      </MDBox>
-      <DialogContent sx={{ p: 0 }}>
-        <MDBox ref={ticketRef} p={2.5}>
-          {/* Header del Ticket */}
-          <MDBox
-            textAlign="center"
-            mb={2}
-            pb={1.5}
-            borderBottom="2px solid"
-            borderColor="info.main"
-          >
-            <MDTypography variant="h5" color="info" fontWeight="bold" mb={0.5}>
-              GoalTime
-            </MDTypography>
-            <MDTypography variant="caption" color="text">
-              Ticket de Reserva Deportiva
-            </MDTypography>
-          </MDBox>
-
-          {/* Información de la Reserva */}
-          <MDBox mb={2}>
-            <MDTypography
-              variant="subtitle2"
-              color="info"
-              fontWeight="bold"
-              mb={1}
-              pb={0.5}
-              borderBottom="1px solid"
-              borderColor="divider"
-            >
-              Información de la Reserva
-            </MDTypography>
-            <Grid container spacing={1.5}>
-              <Grid item xs={6}>
-                <MDTypography variant="caption" color="text" fontWeight="medium">
-                  Número de Reserva
-                </MDTypography>
-                <MDTypography variant="body2" fontWeight="bold">
-                  #{reservation.id?.substring(0, 8).toUpperCase() || "N/A"}
-                </MDTypography>
-              </Grid>
-              <Grid item xs={6} textAlign="right">
-                <MDTypography variant="caption" color="text" fontWeight="medium">
-                  Estado
-                </MDTypography>
-                <MDBox mt={0.5}>
-                  <Chip
-                    label={getReservationStatusText(reservation.status)}
-                    color={getReservationStatusColor(reservation.status)}
-                    size="small"
-                    variant="gradient"
-                  />
-                </MDBox>
-              </Grid>
-              <Grid item xs={6}>
-                <MDTypography variant="caption" color="text" fontWeight="medium">
-                  Fecha
-                </MDTypography>
-                <MDTypography variant="body2" fontWeight="medium">
-                  {formatDate(reservation.date)}
-                </MDTypography>
-              </Grid>
-              <Grid item xs={6} textAlign="right">
-                <MDTypography variant="caption" color="text" fontWeight="medium">
-                  Hora
-                </MDTypography>
-                <MDTypography variant="body2" fontWeight="medium">
-                  {reservation.startTime} - {reservation.endTime}
-                </MDTypography>
-              </Grid>
-            </Grid>
-          </MDBox>
-
-          <Divider sx={{ my: 1.5 }} />
-
-          {/* Información de la Cancha */}
-          <MDBox mb={2}>
-            <MDTypography
-              variant="subtitle2"
-              color="info"
-              fontWeight="bold"
-              mb={1}
-              pb={0.5}
-              borderBottom="1px solid"
-              borderColor="divider"
-            >
-              Información de la Cancha
-            </MDTypography>
-            <MDBox display="flex" alignItems="center" mb={0.5}>
-              <Icon color="info" sx={{ mr: 0.5, fontSize: 18 }}>
-                sports_soccer
-              </Icon>
-              <MDTypography variant="body2" fontWeight="medium">
-                {reservation.fieldName || "N/A"}
-              </MDTypography>
-            </MDBox>
-            <MDBox display="flex" alignItems="center">
-              <Icon color="action" sx={{ mr: 0.5, fontSize: 16 }}>
-                location_on
-              </Icon>
-              <MDTypography variant="caption" color="text">
-                {reservation.fieldAddress || "Dirección no disponible"}
-              </MDTypography>
-            </MDBox>
-          </MDBox>
-
-          <Divider sx={{ my: 1.5 }} />
-
-          {/* Información del Cliente */}
-          <MDBox mb={2}>
-            <MDTypography
-              variant="subtitle2"
-              color="info"
-              fontWeight="bold"
-              mb={1}
-              pb={0.5}
-              borderBottom="1px solid"
-              borderColor="divider"
-            >
-              Información del Cliente
-            </MDTypography>
-            <MDBox display="flex" alignItems="center" mb={0.5}>
-              <Icon color="info" sx={{ mr: 0.5, fontSize: 18 }}>
-                person
-              </Icon>
-              <MDTypography variant="body2" fontWeight="medium">
-                {userProfile?.name || "N/A"}
-              </MDTypography>
-            </MDBox>
-            <MDBox display="flex" alignItems="center">
-              <Icon color="action" sx={{ mr: 0.5, fontSize: 16 }}>
-                email
-              </Icon>
-              <MDTypography variant="caption" color="text">
-                {userProfile?.email || "N/A"}
-              </MDTypography>
-            </MDBox>
-          </MDBox>
-
-          <Divider sx={{ my: 1.5 }} />
-
-          {/* Información de Pago */}
-          <MDBox mb={2}>
-            <MDTypography
-              variant="subtitle2"
-              color="info"
-              fontWeight="bold"
-              mb={1}
-              pb={0.5}
-              borderBottom="1px solid"
-              borderColor="divider"
-            >
-              Información de Pago
-            </MDTypography>
-            <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-              <MDTypography variant="body2" fontWeight="medium">
-                Total Pagado
-              </MDTypography>
-              <MDTypography variant="h6" color="success" fontWeight="bold">
-                ${reservation.totalPrice || "0"}
-              </MDTypography>
-            </MDBox>
-            {reservation.createdAt && (
-              <MDBox display="flex" alignItems="center">
-                <Icon color="action" sx={{ mr: 0.5, fontSize: 16 }}>
-                  access_time
-                </Icon>
-                <MDTypography variant="caption" color="text.secondary" fontSize="10px">
-                  Reserva creada: {formatDateTime(reservation.createdAt)}
-                </MDTypography>
-              </MDBox>
-            )}
-          </MDBox>
-
-          {/* QR Code Placeholder */}
-          <MDBox
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            p={4}
-            mb={3}
-            border="2px dashed"
-            borderColor="divider"
-            borderRadius={2}
-            bgcolor="grey.50"
-          >
-            <MDBox textAlign="center">
-              <Icon sx={{ fontSize: 64, color: "text.secondary", mb: 1 }}>qr_code</Icon>
-              <MDTypography variant="caption" color="text.secondary">
-                Código QR de Reserva
-              </MDTypography>
-              <MDTypography
-                variant="caption"
-                color="text.secondary"
-                fontWeight="bold"
-                display="block"
-                mt={0.5}
-              >
-                #{reservation.id?.substring(0, 8).toUpperCase() || "N/A"}
-              </MDTypography>
-            </MDBox>
-          </MDBox>
-
-          {/* Footer del Ticket */}
-          <MDBox textAlign="center" pt={2} borderTop="2px solid" borderColor="divider">
-            <MDTypography variant="caption" color="text.secondary">
-              © {new Date().getFullYear()} GoalTime. Todos los derechos reservados.
-            </MDTypography>
-            <MDTypography variant="caption" color="text.secondary" display="block" mt={1}>
-              Este ticket es válido para la fecha y hora indicadas.
-            </MDTypography>
-          </MDBox>
-        </MDBox>
-      </DialogContent>
-      <MDBox
-        display="flex"
-        justifyContent="space-between"
-        gap={2}
-        p={2}
-        borderTop="1px solid"
-        borderColor="divider"
-      >
-        <MDButton variant="outlined" color="secondary" onClick={onClose}>
-          Cerrar
-        </MDButton>
-        <MDBox display="flex" gap={2}>
-          <MDButton
-            variant="outlined"
-            color="info"
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      variant="hero"
+      eyebrow="Reserva"
+      title={`Ticket #${reservation.id?.substring(0, 8).toUpperCase() || "N/A"}`}
+      subtitle={reservation.fieldName}
+      icon={<Ticket className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />}
+      bodyClassName="bg-slate-50 px-0 py-0"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cerrar
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
             onClick={handleSendEmail}
             disabled={sendingEmail}
           >
-            <Icon sx={{ mr: 1 }}>{sendingEmail ? "hourglass_empty" : "email"}</Icon>
-            {sendingEmail ? "Enviando..." : "Enviar por Correo"}
-          </MDButton>
-          <MDButton variant="gradient" color="info" onClick={handleDownloadPDF}>
-            <Icon sx={{ mr: 1 }}>download</Icon>
-            Descargar Ticket
-          </MDButton>
-        </MDBox>
-      </MDBox>
+            {sendingEmail ? (
+              <Loader2
+                className="h-[18px] w-[18px] shrink-0 animate-spin"
+                strokeWidth={2}
+                aria-hidden
+              />
+            ) : (
+              <Mail className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+            )}
+            {sendingEmail ? "Enviando…" : "Enviar por correo"}
+          </Button>
+          <Button type="button" variant="primary" onClick={handleDownloadPDF}>
+            <Download className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+            Descargar PDF
+          </Button>
+        </>
+      }
+    >
+      <div ref={ticketRef} className="px-6 sm:px-8 py-7 space-y-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusPill tone={statusInfo.tone}>{statusInfo.label}</StatusPill>
+          <span className="text-xs text-slate-500">
+            Generado el {formatDateTime(reservation.createdAt)}
+          </span>
+        </div>
 
-      <MDSnackbar
-        color={snackbar.color}
-        icon={
-          snackbar.color === "success" ? "check" : snackbar.color === "error" ? "warning" : "info"
-        }
-        title="Ticket"
-        content={snackbar.message}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 space-y-5">
+            <SectionCard
+              eyebrow="Detalle"
+              title="Información de la reserva"
+              icon={<Calendar className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+            >
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6">
+                <Field label="Fecha" value={formatDate(reservation.date)} />
+                <Field
+                  label="Horario"
+                  value={`${reservation.startTime || "N/A"} – ${reservation.endTime || "N/A"}`}
+                />
+                <Field
+                  label="Número de reserva"
+                  value={`#${reservation.id?.substring(0, 8).toUpperCase() || "N/A"}`}
+                  mono
+                />
+                <Field label="Estado" value={<StatusPill tone={statusInfo.tone}>{statusInfo.label}</StatusPill>} />
+              </dl>
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="Cancha"
+              title={reservation.fieldName || "—"}
+              subtitle={reservation.fieldAddress || "Sin dirección"}
+              icon={<Trophy className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+            >
+              <dl className="space-y-3">
+                <Field
+                  icon={<MapPin className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Dirección"
+                  value={reservation.fieldAddress || "No disponible"}
+                  inline
+                />
+              </dl>
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="Cliente"
+              title={userProfile?.name || "Cliente"}
+              icon={<User className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+            >
+              <dl className="space-y-3">
+                <Field
+                  icon={<User className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Nombre"
+                  value={userProfile?.name || "N/A"}
+                  inline
+                />
+                <Field
+                  icon={<Mail className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Correo"
+                  value={userProfile?.email || "N/A"}
+                  inline
+                  breakAll
+                />
+              </dl>
+            </SectionCard>
+          </div>
+
+          <aside className="space-y-5">
+            <SectionCard
+              eyebrow="Pago"
+              title="Total"
+              icon={<Banknote className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
+            >
+              <p className="text-3xl font-bold font-heading text-emerald-600">
+                ${reservation.totalPrice || "0"}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">Pago presencial en la cancha.</p>
+              <div className="mt-4 pt-4 border-t border-slate-100">
+                <Field
+                  icon={<Clock className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />}
+                  label="Generado"
+                  value={formatDateTime(reservation.createdAt)}
+                  inline
+                  small
+                />
+              </div>
+            </SectionCard>
+
+            <SectionCard eyebrow="QR" title="Código de validación" icon={<QrCode className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}>
+              <div className="aspect-square w-full rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center text-slate-400">
+                <div className="text-center px-2">
+                  <QrCode className="h-14 w-14 shrink-0 opacity-60" strokeWidth={1.5} aria-hidden />
+                  <p className="mt-2 text-xs font-mono">
+                    #{reservation.id?.substring(0, 8).toUpperCase() || "N/A"}
+                  </p>
+                </div>
+              </div>
+            </SectionCard>
+          </aside>
+        </div>
+      </div>
+
+      <Toast
         open={snackbar.open}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        close={() => setSnackbar({ ...snackbar, open: false })}
-        bgWhite={snackbar.color !== "info" && snackbar.color !== "dark"}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        message={snackbar.message}
+        type={
+          snackbar.severity === "error"
+            ? "error"
+            : snackbar.severity === "success"
+            ? "success"
+            : snackbar.severity === "warning"
+            ? "warning"
+            : "info"
+        }
+        duration={4000}
       />
-    </Dialog>
+    </Modal>
   );
 }
+
+function Field({ label, value, mono = false, inline = false, breakAll = false, small = false, icon }) {
+  if (inline) {
+    return (
+      <div className="flex items-start justify-between gap-3">
+        <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+          {icon}
+          {label}
+        </span>
+        <span
+          className={[
+            "text-right font-medium text-slate-900 truncate max-w-[60%]",
+            mono ? "font-mono text-xs" : small ? "text-xs" : "text-sm",
+            breakAll ? "break-all" : "",
+          ].join(" ")}
+        >
+          {value}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <dt className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</dt>
+      <dd
+        className={[
+          "mt-0.5 font-semibold text-slate-900",
+          mono ? "font-mono text-xs text-slate-700" : "text-sm",
+        ].join(" ")}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+Field.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.node.isRequired,
+  mono: PropTypes.bool,
+  inline: PropTypes.bool,
+  breakAll: PropTypes.bool,
+  small: PropTypes.bool,
+  icon: PropTypes.node,
+};
 
 TicketModal.propTypes = {
   open: PropTypes.bool.isRequired,
