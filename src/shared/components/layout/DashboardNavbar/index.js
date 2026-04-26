@@ -1,73 +1,44 @@
-import { MDBox, MDInput, MDBadge, MDTypography } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-*/
-
 import { useState, useEffect } from "react";
-
-// react-router components
-import { useLocation, Link, useNavigate } from "react-router-dom"; // 👈 1. Se importa useNavigate
-
-// prop-types is a library for typechecking of props.
+import { Link, useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
-
-// @material-ui core components
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem"; // 👈 2. Se importa MenuItem
-import Icon from "@mui/material/Icon";
+import MenuItem from "@mui/material/MenuItem";
+import Divider from "@mui/material/Divider";
+import Badge from "@mui/material/Badge";
 import Avatar from "@mui/material/Avatar";
-import { Divider } from "@mui/material"; // Para el separador
-
-// GoalTime App components
- // 👈 3. Se importa MDTypography
-import { useAuth } from "shared/context/AuthContext"; // Para obtener los datos del usuario
-
-// GoalTime App example components
-import NotificationsMenu from "shared/components/notifications/NotificationsMenu";
-
-// Custom styles for DashboardNavbar
-import {
-  navbar,
-  navbarContainer,
-  navbarRow,
-  navbarIconButton,
-  navbarMobileMenu,
-} from "./styles/index";
-
-// GoalTime App context
+import { 
+  Notifications, 
+  Person, 
+  Settings, 
+  Logout, 
+  Menu as MenuIcon,
+  MenuOpen,
+  AdminPanelSettings,
+  BusinessCenter
+} from "@mui/icons-material";
+import { useAuth } from "shared/context/AuthContext";
 import { useMaterialUIController, setTransparentNavbar, setMiniSidenav } from "shared/context";
-
-// 👈 4. Se importa la función de logout
-import { logoutUser } from "shared/services/firebaseService";
+import { logoutUser, subscribeToNotifications, markNotificationAsRead, markAllNotificationsAsRead } from "shared/services/firebaseService";
+import { navbar, navbarContainer } from "./styles/index";
 
 function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
   const { miniSidenav, transparentNavbar, fixedNavbar, darkMode } = controller;
-
-  // 👈 5. Se añaden estados y manejadores para el NUEVO menú de cuenta
-  const [openAccountMenu, setOpenAccountMenu] = useState(false);
-  const handleOpenAccountMenu = (event) => setOpenAccountMenu(event.currentTarget);
-  const handleCloseAccountMenu = () => setOpenAccountMenu(false);
-
-  const route = useLocation().pathname.split("/").slice(1);
-  const navigate = useNavigate(); // 👈 6. Se inicializa el hook de navegación
-
-  // 👈 7. Se crea la función para manejar el logout
-  const handleLogout = async () => {
-    handleCloseAccountMenu(); // Cierra el menú primero
-    try {
-      await logoutUser();
-      navigate("/authentication/sign-in");
-    } catch (error) {
-      console.error("Error al cerrar sesión:", error);
-    }
-  };
+  
+  // Estados menú avatar
+  const [accountMenuAnchor, setAccountMenuAnchor] = useState(null);
+  
+  // Estados notificaciones
+  const [notifMenuAnchor, setNotifMenuAnchor] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  
+  const navigate = useNavigate();
+  const { userProfile, currentUser } = useAuth();
 
   useEffect(() => {
     if (fixedNavbar) {
@@ -85,87 +56,86 @@ function DashboardNavbar({ absolute, light, isMini }) {
     return () => window.removeEventListener("scroll", handleTransparentNavbar);
   }, [dispatch, fixedNavbar]);
 
+  // Suscribirse a notificaciones
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    const unsubscribe = subscribeToNotifications(currentUser.uid, (notifs) => {
+      setNotifications(notifs);
+      setUnreadCount(notifs.filter((n) => !n.read).length);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [currentUser]);
+
   const handleMiniSidenav = () => setMiniSidenav(dispatch, !miniSidenav);
 
-  // 👈 8. Obtenemos el perfil del usuario desde el contexto
-  const { userProfile } = useAuth();
-
-  // 👈 9. Se crea la función para renderizar el NUEVO menú de cuenta
-  const renderAccountMenu = () => {
-    return (
-      <Menu
-        anchorEl={openAccountMenu}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-        open={Boolean(openAccountMenu)}
-        onClose={handleCloseAccountMenu}
-        sx={{ mt: 2 }}
-      >
-        {/* Sección de Información del Usuario */}
-        <MDBox px={2} py={1}>
-          <MDTypography variant="h6">{userProfile ? userProfile.name : "Usuario"}</MDTypography>
-          <MDTypography variant="button" color="text">
-            {userProfile ? userProfile.email : ""}
-          </MDTypography>
-
-          {/* 👇 1. Se añade la lógica condicional para mostrar el rol */}
-          {userProfile && (userProfile.role === "admin" || userProfile.role === "asociado") && (
-            <MDBox mt={1}>
-              <MDBadge
-                badgeContent={userProfile.role}
-                color={userProfile.role === "admin" ? "info" : "dark"}
-                variant="gradient"
-                size="sm"
-              />
-            </MDBox>
-          )}
-        </MDBox>
-
-        <Divider sx={{ my: 1 }} />
-
-        {/* Sección de Acciones */}
-        <MenuItem component={Link} to="/profile" onClick={handleCloseAccountMenu}>
-          <Icon>person</Icon>
-          <MDTypography variant="button" sx={{ ml: 1 }}>
-            Mi Perfil
-          </MDTypography>
-        </MenuItem>
-
-        <MenuItem
-          onClick={(e) => {
-            handleCloseAccountMenu();
-            // Disparar evento para abrir modal de configuración
-            window.dispatchEvent(new CustomEvent("openSettingsModal"));
-          }}
-        >
-          <Icon>settings</Icon>
-          <MDTypography variant="button" sx={{ ml: 1 }}>
-            Configuración
-          </MDTypography>
-        </MenuItem>
-
-        <Divider sx={{ my: 1 }} />
-
-        <MenuItem onClick={handleLogout}>
-          <Icon>logout</Icon>
-          <MDTypography variant="button" color="error" sx={{ ml: 1 }}>
-            Cerrar Sesión
-          </MDTypography>
-        </MenuItem>
-      </Menu>
-    );
+  const handleLogout = async () => {
+    setAccountMenuAnchor(null);
+    try {
+      await logoutUser();
+      navigate("/authentication/sign-in");
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+    }
   };
 
-  // Styles for the navbar icons - simplificado sin dependencias del theme
-  const iconsStyle = () => ({
-    color: () => {
-      let colorValue = light || darkMode ? "#ffffff" : "#1a2035";
-      if (transparentNavbar && !light) {
-        colorValue = darkMode ? "rgba(52, 71, 103, 0.6)" : "#344767";
+  const handleNotificationClick = async (notification) => {
+    if (!notification.read) {
+      try {
+        await markNotificationAsRead(notification.id);
+      } catch (error) {
+        console.error("Error:", error);
       }
-      return colorValue;
-    },
-  });
+    }
+    setNotifMenuAnchor(null);
+    if (notification.actionUrl) {
+      navigate(notification.actionUrl);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    if (!currentUser?.uid || unreadCount === 0) return;
+    try {
+      await markAllNotificationsAsRead(currentUser.uid);
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "Ahora";
+    const date = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return "Ahora";
+    if (minutes < 60) return `Hace ${minutes} min`;
+    if (hours < 24) return `Hace ${hours} h`;
+    if (days < 7) return `Hace ${days} d`;
+    return date.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  };
+
+  const getRoleConfig = (role) => {
+    const configs = {
+      admin: { icon: AdminPanelSettings, label: "Administrador", color: "#1E3A8A" },
+      asociado: { icon: BusinessCenter, label: "Asociado", color: "#3B82F6" },
+      cliente: { icon: Person, label: "Cliente", color: "#14b85f" },
+    };
+    return configs[role] || configs.cliente;
+  };
+
+  const roleConfig = getRoleConfig(userProfile?.role);
+  const RoleIcon = roleConfig.icon;
 
   return (
     <AppBar
@@ -174,59 +144,257 @@ function DashboardNavbar({ absolute, light, isMini }) {
       sx={(theme) => navbar(theme, { transparentNavbar, absolute, light, darkMode })}
     >
       <Toolbar sx={(theme) => navbarContainer(theme)}>
-        <MDBox color="inherit" sx={(theme) => navbarRow(theme, { isMini })} py={{ xs: 1.5, md: 2 }}>
-          {/* Breadcrumbs removido - cada página tiene su propio título */}
-        </MDBox>
-        {isMini ? null : (
-          <MDBox
-            sx={(theme) => navbarRow(theme, { isMini })}
-            display="flex"
-            justifyContent="flex-end"
-            flex={1}
-          >
-            <MDBox
-              color={light ? "white" : "inherit"}
-              display="flex"
-              alignItems="center"
-              gap={1}
-              sx={{
-                ml: "auto",
-                flexShrink: 0,
+        <div className="flex items-center justify-between w-full gap-4">
+          <div className="flex-1" />
+          
+          <div className="flex items-center gap-2">
+            {/* Menu toggle */}
+            <IconButton
+              size="medium"
+              onClick={handleMiniSidenav}
+              className="lg:hidden"
+              sx={{ color: "inherit" }}
+            >
+              {miniSidenav ? <MenuOpen /> : <MenuIcon />}
+            </IconButton>
+
+            {/* Notificaciones */}
+            <IconButton
+              size="medium"
+              onClick={(e) => setNotifMenuAnchor(e.currentTarget)}
+              sx={{ 
+                color: "inherit",
+                transition: "all 200ms",
+                "&:hover": { 
+                  transform: "scale(1.1)",
+                  bgcolor: "rgba(30, 58, 138, 0.08)",
+                },
               }}
             >
-              <IconButton
-                size="small"
-                disableRipple
-                color="inherit"
-                sx={navbarMobileMenu}
-                onClick={handleMiniSidenav}
+              <Badge badgeContent={unreadCount} color="error" max={99}>
+                <Notifications />
+              </Badge>
+            </IconButton>
+
+            {/* Avatar */}
+            <IconButton
+              onClick={(e) => setAccountMenuAnchor(e.currentTarget)}
+              sx={{ 
+                p: 0.5,
+                transition: "all 200ms",
+                "&:hover": { 
+                  transform: "scale(1.05)",
+                },
+              }}
+            >
+              <Avatar
+                src={userProfile?.photoURL || ""}
+                alt={userProfile?.name || "Usuario"}
+                sx={{
+                  width: 40,
+                  height: 40,
+                  background: "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)",
+                  fontWeight: "bold",
+                  fontSize: "1rem",
+                }}
               >
-                <Icon sx={iconsStyle} fontSize="medium">
-                  {miniSidenav ? "menu_open" : "menu"}
-                </Icon>
-              </IconButton>
-              {/* Componente de Notificaciones */}
-              <NotificationsMenu />
-              {/* 👇 Avatar del usuario como en la página de inicio */}
-              <IconButton onClick={handleOpenAccountMenu} sx={{ p: 0 }}>
-                <Avatar
-                  src={userProfile?.photoURL || ""}
-                  alt={userProfile?.name || "Usuario"}
-                  sx={{ width: 48, height: 48 }}
-                >
-                  {userProfile?.name ? userProfile.name[0].toUpperCase() : "U"}
-                </Avatar>
-              </IconButton>
-              {renderAccountMenu()} {/* 👈 10. Se renderiza el nuevo menú */}
-            </MDBox>
-          </MDBox>
-        )}
+                {userProfile?.name ? userProfile.name[0].toUpperCase() : "U"}
+              </Avatar>
+            </IconButton>
+          </div>
+        </div>
       </Toolbar>
+
+      {/* Menú Avatar */}
+      <Menu
+        anchorEl={accountMenuAnchor}
+        open={Boolean(accountMenuAnchor)}
+        onClose={() => setAccountMenuAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        PaperProps={{
+          sx: {
+            mt: 1.5,
+            minWidth: 280,
+            borderRadius: "12px",
+            backdropFilter: "blur(12px)",
+            bgcolor: "rgba(255, 255, 255, 0.95)",
+            boxShadow: "0 8px 32px rgba(31, 38, 135, 0.15)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+          },
+        }}
+      >
+        {/* Header con info usuario */}
+        <div className="px-4 py-3">
+          <div className="flex items-center gap-3 mb-2">
+            <Avatar
+              src={userProfile?.photoURL || ""}
+              sx={{
+                width: 48,
+                height: 48,
+                background: "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)",
+              }}
+            >
+              {userProfile?.name ? userProfile.name[0].toUpperCase() : "U"}
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold font-heading text-primary-900 truncate">
+                {userProfile?.name || "Usuario"}
+              </p>
+              <p className="text-xs text-surface-500 truncate">{userProfile?.email || ""}</p>
+            </div>
+          </div>
+          {userProfile?.role && (
+            <div
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+              style={{ backgroundColor: `${roleConfig.color}15`, color: roleConfig.color }}
+            >
+              <RoleIcon sx={{ fontSize: 14 }} />
+              {roleConfig.label}
+            </div>
+          )}
+        </div>
+
+        <Divider />
+
+        {/* Opciones */}
+        <MenuItem
+          component={Link}
+          to="/profile"
+          onClick={() => setAccountMenuAnchor(null)}
+          sx={{ py: 1.5, px: 2, gap: 1.5 }}
+        >
+          <Person sx={{ color: "primary.main" }} />
+          <span className="font-medium">Mi Perfil</span>
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => {
+            setAccountMenuAnchor(null);
+            window.dispatchEvent(new CustomEvent("openSettingsModal"));
+          }}
+          sx={{ py: 1.5, px: 2, gap: 1.5 }}
+        >
+          <Settings sx={{ color: "primary.main" }} />
+          <span className="font-medium">Configuración</span>
+        </MenuItem>
+
+        <Divider />
+
+        <MenuItem
+          onClick={handleLogout}
+          sx={{ py: 1.5, px: 2, gap: 1.5, color: "error.main" }}
+        >
+          <Logout />
+          <span className="font-medium">Cerrar Sesión</span>
+        </MenuItem>
+      </Menu>
+
+      {/* Menú Notificaciones */}
+      <Menu
+        anchorEl={notifMenuAnchor}
+        open={Boolean(notifMenuAnchor)}
+        onClose={() => setNotifMenuAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        PaperProps={{
+          sx: {
+            mt: 1.5,
+            minWidth: 380,
+            maxWidth: 420,
+            maxHeight: 520,
+            borderRadius: "12px",
+            backdropFilter: "blur(12px)",
+            bgcolor: "rgba(255, 255, 255, 0.95)",
+            boxShadow: "0 8px 32px rgba(31, 38, 135, 0.15)",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+          },
+        }}
+      >
+        {/* Header */}
+        <div className="px-4 py-3 flex items-center justify-between">
+          <h3 className="font-bold font-heading text-primary-900 text-lg">Notificaciones</h3>
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllAsRead}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Marcar todas
+            </button>
+          )}
+        </div>
+
+        <Divider />
+
+        {/* Lista */}
+        <div className="max-h-96 overflow-y-auto">
+          {notifications.length === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <Notifications sx={{ fontSize: 48, color: "text.secondary", mb: 2 }} />
+              <p className="text-sm text-surface-500">No tienes notificaciones</p>
+            </div>
+          ) : (
+            notifications.map((notif) => (
+              <MenuItem
+                key={notif.id}
+                onClick={() => handleNotificationClick(notif)}
+                sx={{
+                  py: 2,
+                  px: 3,
+                  bgcolor: notif.read ? "transparent" : "rgba(30, 58, 138, 0.05)",
+                  borderLeft: notif.read ? "none" : "3px solid #1E3A8A",
+                  "&:hover": { bgcolor: "rgba(30, 58, 138, 0.08)" },
+                }}
+              >
+                <div className="flex items-start gap-3 w-full">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{
+                      backgroundColor:
+                        notif.color === "success"
+                          ? "#14b85f"
+                          : notif.color === "error"
+                          ? "#dc2626"
+                          : "#3B82F6",
+                    }}
+                  >
+                    <Notifications sx={{ fontSize: 20, color: "white" }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`text-sm ${
+                        notif.read ? "font-medium" : "font-bold"
+                      } text-primary-900 truncate`}
+                    >
+                      {notif.title}
+                    </p>
+                    <p className="text-xs text-surface-500 line-clamp-2 mt-0.5">{notif.message}</p>
+                    <p className="text-xs text-surface-400 mt-1">{formatDate(notif.createdAt)}</p>
+                  </div>
+                  {!notif.read && (
+                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1" />
+                  )}
+                </div>
+              </MenuItem>
+            ))
+          )}
+        </div>
+
+        {notifications.length > 0 && (
+          <>
+            <Divider />
+            <div className="px-4 py-2 text-center">
+              <p className="text-xs text-surface-400">
+                {notifications.length} {notifications.length === 1 ? "notificación" : "notificaciones"}
+              </p>
+            </div>
+          </>
+        )}
+      </Menu>
     </AppBar>
   );
 }
 
-// ... (defaultProps y propTypes sin cambios)
 DashboardNavbar.defaultProps = {
   absolute: false,
   light: false,

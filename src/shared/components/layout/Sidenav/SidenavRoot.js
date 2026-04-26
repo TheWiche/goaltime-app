@@ -9,29 +9,29 @@ import Drawer from "@mui/material/Drawer";
 import { styled } from "@mui/material/styles";
 
 export default styled(Drawer)(({ theme, ownerState }) => {
-  const { transparentSidenav, whiteSidenav, miniSidenav, darkMode } = ownerState;
+  const { transparentSidenav, miniSidenav } = ownerState;
 
   const sidebarWidth = 250;
-  const glassShadow = "0 8px 32px 0 rgba(31, 38, 135, 0.15)";
+  const glassShadow = "0 8px 32px 0 rgba(31, 38, 135, 0.2)";
   
-  // Glassmorphism background
-  let backgroundValue = "rgba(255, 255, 255, 0.75)";
-  let backdropFilter = "blur(12px)";
-  let border = "1px solid rgba(255, 255, 255, 0.2)";
+  let backgroundValue = "rgba(255, 255, 255, 0.85)";
+  let backdropFilter = "blur(16px)";
+  let border = "1px solid rgba(30, 58, 138, 0.15)";
 
   if (transparentSidenav) {
-    backgroundValue = "rgba(255, 255, 255, 0.5)";
-    backdropFilter = "blur(8px)";
+    backgroundValue = "rgba(255, 255, 255, 0.6)";
+    backdropFilter = "blur(12px)";
   }
 
-  // styles for the sidenav when miniSidenav={false}
   const drawerOpenStyles = () => ({
     background: backgroundValue,
     backdropFilter: backdropFilter,
     border: "none",
     borderRight: border,
     transform: "translateX(0)",
-    transition: "transform 225ms cubic-bezier(0.4, 0, 0.6, 1) 0ms",
+    transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+    display: "flex",
+    flexDirection: "column",
 
     "@media (min-width: 1280px)": {
       boxShadow: transparentSidenav ? "none" : glassShadow,
@@ -39,18 +39,19 @@ export default styled(Drawer)(({ theme, ownerState }) => {
       left: "0",
       width: sidebarWidth,
       transform: "translateX(0)",
-      transition: "width 225ms cubic-bezier(0.4, 0, 0.6, 1) 0ms, background-color 225ms cubic-bezier(0.4, 0, 0.6, 1) 0ms",
+      transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
     },
   });
 
-  // styles for the sidenav when miniSidenav={true}
   const drawerCloseStyles = () => ({
     background: backgroundValue,
     backdropFilter: backdropFilter,
     border: "none",
     borderRight: border,
     transform: "translateX(-320px)",
-    transition: "transform 225ms cubic-bezier(0.4, 0, 0.6, 1) 0ms",
+    transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+    display: "flex",
+    flexDirection: "column",
 
     "@media (min-width: 1280px)": {
       boxShadow: transparentSidenav ? "none" : glassShadow,
@@ -59,7 +60,7 @@ export default styled(Drawer)(({ theme, ownerState }) => {
       width: "96px",
       overflowX: "hidden",
       transform: "translateX(0)",
-      transition: "width 195ms cubic-bezier(0.4, 0, 0.6, 1) 0ms, background-color 195ms cubic-bezier(0.4, 0, 0.6, 1) 0ms",
+      transition: "all 300ms cubic-bezier(0.4, 0, 0.2, 1)",
     },
   });
 

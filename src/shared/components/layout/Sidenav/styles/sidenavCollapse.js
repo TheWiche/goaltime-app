@@ -4,10 +4,10 @@
 =========================================================
 */
 function collapseItem(theme, ownerState) {
-  const { active, transparentSidenav, whiteSidenav, darkMode, sidenavColor } = ownerState;
+  const { active, transparentSidenav, whiteSidenav, darkMode } = ownerState;
 
-  const glassShadow = "0 4px 12px rgba(30, 58, 138, 0.15)";
-  const activeGradient = "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)"; // primary gradient
+  const glassShadow = "0 4px 16px rgba(30, 58, 138, 0.2)";
+  const activeGradient = "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)";
 
   return {
     background: active ? activeGradient : "transparent",
@@ -18,17 +18,29 @@ function collapseItem(theme, ownerState) {
     display: "flex",
     alignItems: "center",
     width: "100%",
-    padding: "10px 12px",
-    margin: "4px 16px",
-    borderRadius: "0.75rem",
+    padding: "12px 16px",
+    margin: "4px 0",
+    borderRadius: "10px",
     cursor: "pointer",
     userSelect: "none",
     whiteSpace: "nowrap",
     fontFamily: "'Poppins', sans-serif",
     fontWeight: active ? 600 : 500,
     boxShadow: active ? glassShadow : "none",
+    position: "relative",
+    overflow: "hidden",
+    
+    "&::before": active ? {
+      content: '""',
+      position: "absolute",
+      inset: 0,
+      background: "rgba(255, 255, 255, 0.1)",
+      borderRadius: "10px",
+      pointerEvents: "none",
+    } : {},
+
     "@media (min-width: 1280px)": {
-      transition: "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+      transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)",
     },
 
     "&:hover, &:focus": {
@@ -41,13 +53,14 @@ function collapseItem(theme, ownerState) {
 
         return backgroundValue;
       },
-      transform: !active ? "translateX(4px)" : "none",
+      transform: !active ? "translateX(6px)" : "scale(1.02)",
+      boxShadow: !active ? "0 2px 8px rgba(30, 58, 138, 0.1)" : glassShadow,
     },
   };
 }
 
 function collapseIconBox(theme, ownerState) {
-  const { transparentSidenav, whiteSidenav, darkMode, active } = ownerState;
+  const { active } = ownerState;
 
   return {
     minWidth: "32px",

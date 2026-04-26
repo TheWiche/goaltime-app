@@ -5,6 +5,7 @@ import List from "@mui/material/List";
 import Divider from "@mui/material/Divider";
 import Link from "@mui/material/Link";
 import Icon from "@mui/material/Icon";
+import { SportsSoccer, TrendingUp } from "@mui/icons-material";
 
 import { MDBox, MDTypography } from "shared/components/md-shims";
 import SidenavCollapse from "./SidenavCollapse";
@@ -23,8 +24,6 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
   const { miniSidenav, transparentSidenav, whiteSidenav, darkMode } = controller;
   const location = useLocation();
   const collapseName = location.pathname.replace("/", "");
-
-  let textColor = "#1E3A8A"; // primary color
 
   const closeSidenav = () => setMiniSidenav(dispatch, true);
 
@@ -78,7 +77,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
           mt={2}
           mb={1}
           ml={1}
-          sx={{ fontFamily: "'Poppins', sans-serif" }}
+          sx={{ fontFamily: "'Poppins', sans-serif", fontSize: "0.7rem", letterSpacing: "0.5px" }}
         >
           {title}
         </MDTypography>
@@ -90,7 +89,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
           light
           sx={{ 
             borderColor: "rgba(30, 58, 138, 0.1)",
-            my: 1,
+            my: 1.5,
           }}
         />
       );
@@ -105,7 +104,8 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
       variant="permanent"
       ownerState={{ transparentSidenav, whiteSidenav, miniSidenav, darkMode }}
     >
-      <MDBox pt={2} pb={1} px={4}>
+      {/* Header con logo */}
+      <MDBox pt={3} pb={2} px={3}>
         <MDBox
           display={{ xs: "block", xl: "none" }}
           position="absolute"
@@ -126,32 +126,56 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
           flexDirection="column"
           alignItems="center"
           justifyContent="center"
-          sx={{ textAlign: "center" }}
+          sx={{ 
+            textAlign: "center",
+            transition: "all 200ms",
+            "&:hover": { transform: "scale(1.05)" }
+          }}
         >
           {brand && (
             <MDBox
               component="img"
               src={brand}
               alt="Brand"
-              sx={{ width: "3rem", height: "3rem", mb: 1 }}
+              sx={{ 
+                width: "3.5rem", 
+                height: "3.5rem", 
+                mb: 1.5,
+                borderRadius: "12px",
+                boxShadow: "0 4px 12px rgba(30, 58, 138, 0.15)",
+              }}
             />
           )}
           <MDBox width="100%" sx={(theme) => sidenavLogoLabel(theme, { miniSidenav })}>
             <MDTypography
               component="h6"
-              variant="h6"
+              variant="h5"
               fontWeight="bold"
               textAlign="center"
               sx={{ 
                 color: "#1E3A8A",
                 fontFamily: "'Poppins', sans-serif",
+                letterSpacing: "-0.5px",
               }}
             >
               {brandName}
             </MDTypography>
+            <MDTypography
+              variant="caption"
+              textAlign="center"
+              sx={{ 
+                color: "#64748b",
+                display: "block",
+                mt: 0.5,
+                fontSize: "0.7rem",
+              }}
+            >
+              Gestión de Canchas
+            </MDTypography>
           </MDBox>
         </MDBox>
       </MDBox>
+      
       <Divider
         light
         sx={{ 
@@ -159,7 +183,54 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
           mb: 1,
         }}
       />
-      <List>{renderRoutes}</List>
+      
+      {/* Lista de rutas */}
+      <List sx={{ px: 1.5, flex: 1, overflowY: "auto" }}>{renderRoutes}</List>
+      
+      {/* Footer */}
+      <MDBox px={3} py={2}>
+        <Divider
+          light
+          sx={{ 
+            borderColor: "rgba(30, 58, 138, 0.1)",
+            mb: 2,
+          }}
+        />
+        <MDBox
+          sx={{
+            backdropFilter: "blur(8px)",
+            bgcolor: "rgba(30, 58, 138, 0.05)",
+            borderRadius: "12px",
+            p: 2,
+            border: "1px solid rgba(30, 58, 138, 0.1)",
+          }}
+        >
+          <MDTypography
+            variant="caption"
+            fontWeight="bold"
+            sx={{ 
+              color: "#1E3A8A",
+              display: "block",
+              mb: 1,
+              fontFamily: "'Poppins', sans-serif",
+            }}
+          >
+            GoalTime v2.2
+          </MDTypography>
+          <MDBox display="flex" alignItems="center" gap={0.5} mb={0.5}>
+            <SportsSoccer sx={{ fontSize: 12, color: "#64748b" }} />
+            <MDTypography variant="caption" sx={{ color: "#64748b", fontSize: "0.65rem" }}>
+              Sistema de reservas
+            </MDTypography>
+          </MDBox>
+          <MDBox display="flex" alignItems="center" gap={0.5}>
+            <TrendingUp sx={{ fontSize: 12, color: "#64748b" }} />
+            <MDTypography variant="caption" sx={{ color: "#64748b", fontSize: "0.65rem" }}>
+              Panel modernizado
+            </MDTypography>
+          </MDBox>
+        </MDBox>
+      </MDBox>
     </SidenavRoot>
   );
 }
