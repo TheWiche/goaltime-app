@@ -212,82 +212,132 @@ function DashboardNavbar({ absolute, light, isMini }) {
         onClose={() => setAccountMenuAnchor(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        PaperProps={{
-          sx: {
-            mt: 1.5,
-            minWidth: 280,
-            borderRadius: "12px",
-            backdropFilter: "blur(12px)",
-            bgcolor: "rgba(255, 255, 255, 0.95)",
-            boxShadow: "0 8px 32px rgba(31, 38, 135, 0.15)",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
+        slotProps={{
+          paper: {
+            elevation: 0,
+            sx: {
+              mt: 1.5,
+              minWidth: 280,
+              borderRadius: "16px",
+              bgcolor: "white",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
+              border: "1px solid rgba(0, 0, 0, 0.05)",
+              overflow: "visible",
+              "&::before": {
+                content: '""',
+                display: "block",
+                position: "absolute",
+                top: 0,
+                right: 20,
+                width: 10,
+                height: 10,
+                bgcolor: "white",
+                transform: "translateY(-50%) rotate(45deg)",
+                zIndex: 0,
+                borderTop: "1px solid rgba(0, 0, 0, 0.05)",
+                borderLeft: "1px solid rgba(0, 0, 0, 0.05)",
+              },
+            },
           },
         }}
       >
         {/* Header con info usuario */}
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3 mb-2">
+        <div className="px-4 py-3 bg-gradient-to-br from-primary-50 to-white">
+          <div className="flex items-center gap-3 mb-3">
             <Avatar
               src={userProfile?.photoURL || ""}
               sx={{
-                width: 48,
-                height: 48,
+                width: 50,
+                height: 50,
                 background: "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)",
+                border: "2px solid white",
+                boxShadow: "0 2px 8px rgba(30, 58, 138, 0.15)",
               }}
             >
               {userProfile?.name ? userProfile.name[0].toUpperCase() : "U"}
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="font-bold font-heading text-primary-900 truncate">
+              <p className="font-bold font-heading text-primary-900 text-sm truncate">
                 {userProfile?.name || "Usuario"}
               </p>
-              <p className="text-xs text-surface-500 truncate">{userProfile?.email || ""}</p>
+              <p className="text-xs text-primary-600 truncate">{userProfile?.email || ""}</p>
             </div>
           </div>
           {userProfile?.role && (
             <div
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
-              style={{ backgroundColor: `${roleConfig.color}15`, color: roleConfig.color }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-white shadow-sm"
+              style={{ color: roleConfig.color, border: `1.5px solid ${roleConfig.color}20` }}
             >
-              <RoleIcon sx={{ fontSize: 14 }} />
+              <RoleIcon sx={{ fontSize: 15 }} />
               {roleConfig.label}
             </div>
           )}
         </div>
 
-        <Divider />
+        <Divider sx={{ borderColor: "rgba(0, 0, 0, 0.06)" }} />
 
         {/* Opciones */}
-        <MenuItem
-          component={Link}
-          to="/profile"
-          onClick={() => setAccountMenuAnchor(null)}
-          sx={{ py: 1.5, px: 2, gap: 1.5 }}
-        >
-          <Person sx={{ color: "primary.main" }} />
-          <span className="font-medium">Mi Perfil</span>
-        </MenuItem>
+        <div className="py-2">
+          <MenuItem
+            component={Link}
+            to="/profile"
+            onClick={() => setAccountMenuAnchor(null)}
+            sx={{ 
+              py: 1.5, 
+              px: 3, 
+              gap: 2,
+              borderRadius: "8px",
+              mx: 1,
+              "&:hover": {
+                bgcolor: "rgba(30, 58, 138, 0.06)",
+              },
+            }}
+          >
+            <Person sx={{ color: "#1E3A8A", fontSize: 20 }} />
+            <span className="font-medium text-sm text-gray-700">Mi Perfil</span>
+          </MenuItem>
 
-        <MenuItem
-          onClick={() => {
-            setAccountMenuAnchor(null);
-            window.dispatchEvent(new CustomEvent("openSettingsModal"));
-          }}
-          sx={{ py: 1.5, px: 2, gap: 1.5 }}
-        >
-          <Settings sx={{ color: "primary.main" }} />
-          <span className="font-medium">Configuración</span>
-        </MenuItem>
+          <MenuItem
+            onClick={() => {
+              setAccountMenuAnchor(null);
+              window.dispatchEvent(new CustomEvent("openSettingsModal"));
+            }}
+            sx={{ 
+              py: 1.5, 
+              px: 3, 
+              gap: 2,
+              borderRadius: "8px",
+              mx: 1,
+              "&:hover": {
+                bgcolor: "rgba(30, 58, 138, 0.06)",
+              },
+            }}
+          >
+            <Settings sx={{ color: "#1E3A8A", fontSize: 20 }} />
+            <span className="font-medium text-sm text-gray-700">Configuración</span>
+          </MenuItem>
+        </div>
 
-        <Divider />
+        <Divider sx={{ borderColor: "rgba(0, 0, 0, 0.06)" }} />
 
-        <MenuItem
-          onClick={handleLogout}
-          sx={{ py: 1.5, px: 2, gap: 1.5, color: "error.main" }}
-        >
-          <Logout />
-          <span className="font-medium">Cerrar Sesión</span>
-        </MenuItem>
+        <div className="py-2">
+          <MenuItem
+            onClick={handleLogout}
+            sx={{ 
+              py: 1.5, 
+              px: 3, 
+              gap: 2,
+              borderRadius: "8px",
+              mx: 1,
+              "&:hover": {
+                bgcolor: "rgba(220, 38, 38, 0.06)",
+              },
+            }}
+          >
+            <Logout sx={{ color: "#dc2626", fontSize: 20 }} />
+            <span className="font-medium text-sm text-red-600">Cerrar Sesión</span>
+          </MenuItem>
+        </div>
       </Menu>
 
       {/* Menú Notificaciones */}
@@ -297,41 +347,53 @@ function DashboardNavbar({ absolute, light, isMini }) {
         onClose={() => setNotifMenuAnchor(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        PaperProps={{
-          sx: {
-            mt: 1.5,
-            minWidth: 380,
-            maxWidth: 420,
-            maxHeight: 520,
-            borderRadius: "12px",
-            backdropFilter: "blur(12px)",
-            bgcolor: "rgba(255, 255, 255, 0.95)",
-            boxShadow: "0 8px 32px rgba(31, 38, 135, 0.15)",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
+        slotProps={{
+          paper: {
+            elevation: 0,
+            sx: {
+              mt: 1.5,
+              minWidth: 380,
+              maxWidth: 420,
+              maxHeight: 520,
+              borderRadius: "16px",
+              bgcolor: "white",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.08)",
+              border: "1px solid rgba(0, 0, 0, 0.05)",
+              overflow: "hidden",
+            },
           },
         }}
       >
         {/* Header */}
-        <div className="px-4 py-3 flex items-center justify-between">
-          <h3 className="font-bold font-heading text-primary-900 text-lg">Notificaciones</h3>
+        <div className="px-4 py-3 flex items-center justify-between bg-gradient-to-r from-primary-50 to-white border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Notifications sx={{ color: "#1E3A8A", fontSize: 22 }} />
+            <h3 className="font-bold font-heading text-primary-900 text-base">Notificaciones</h3>
+            {unreadCount > 0 && (
+              <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">
+                {unreadCount}
+              </span>
+            )}
+          </div>
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllAsRead}
-              className="text-xs font-medium text-primary hover:underline"
+              className="text-xs font-semibold text-primary hover:text-primary-700 transition-colors"
             >
               Marcar todas
             </button>
           )}
         </div>
 
-        <Divider />
-
         {/* Lista */}
         <div className="max-h-96 overflow-y-auto">
           {notifications.length === 0 ? (
             <div className="px-4 py-12 text-center">
-              <Notifications sx={{ fontSize: 48, color: "text.secondary", mb: 2 }} />
-              <p className="text-sm text-surface-500">No tienes notificaciones</p>
+              <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gray-100 flex items-center justify-center">
+                <Notifications sx={{ fontSize: 32, color: "#94a3b8" }} />
+              </div>
+              <p className="text-sm font-medium text-gray-900 mb-1">No hay notificaciones</p>
+              <p className="text-xs text-gray-500">Te avisaremos cuando haya algo nuevo</p>
             </div>
           ) : (
             notifications.map((notif) => (
@@ -341,9 +403,14 @@ function DashboardNavbar({ absolute, light, isMini }) {
                 sx={{
                   py: 2,
                   px: 3,
-                  bgcolor: notif.read ? "transparent" : "rgba(30, 58, 138, 0.05)",
-                  borderLeft: notif.read ? "none" : "3px solid #1E3A8A",
-                  "&:hover": { bgcolor: "rgba(30, 58, 138, 0.08)" },
+                  bgcolor: notif.read ? "transparent" : "rgba(30, 58, 138, 0.04)",
+                  borderLeft: notif.read ? "3px solid transparent" : "3px solid #1E3A8A",
+                  "&:hover": { 
+                    bgcolor: notif.read ? "rgba(0, 0, 0, 0.02)" : "rgba(30, 58, 138, 0.08)",
+                  },
+                  "&:not(:last-child)": {
+                    borderBottom: "1px solid rgba(0, 0, 0, 0.05)",
+                  },
                 }}
               >
                 <div className="flex items-start gap-3 w-full">
@@ -352,27 +419,36 @@ function DashboardNavbar({ absolute, light, isMini }) {
                     style={{
                       backgroundColor:
                         notif.color === "success"
-                          ? "#14b85f"
+                          ? "#dcfce7"
                           : notif.color === "error"
-                          ? "#dc2626"
-                          : "#3B82F6",
+                          ? "#fee2e2"
+                          : "#dbeafe",
                     }}
                   >
-                    <Notifications sx={{ fontSize: 20, color: "white" }} />
+                    <Notifications 
+                      sx={{ 
+                        fontSize: 18, 
+                        color: notif.color === "success"
+                          ? "#16a34a"
+                          : notif.color === "error"
+                          ? "#dc2626"
+                          : "#3B82F6"
+                      }} 
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p
-                      className={`text-sm ${
-                        notif.read ? "font-medium" : "font-bold"
-                      } text-primary-900 truncate`}
+                      className={`text-sm mb-1 ${
+                        notif.read ? "font-medium text-gray-700" : "font-bold text-gray-900"
+                      }`}
                     >
                       {notif.title}
                     </p>
-                    <p className="text-xs text-surface-500 line-clamp-2 mt-0.5">{notif.message}</p>
-                    <p className="text-xs text-surface-400 mt-1">{formatDate(notif.createdAt)}</p>
+                    <p className="text-xs text-gray-600 line-clamp-2 mb-1">{notif.message}</p>
+                    <p className="text-xs text-gray-400">{formatDate(notif.createdAt)}</p>
                   </div>
                   {!notif.read && (
-                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1" />
+                    <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5" />
                   )}
                 </div>
               </MenuItem>
@@ -381,14 +457,11 @@ function DashboardNavbar({ absolute, light, isMini }) {
         </div>
 
         {notifications.length > 0 && (
-          <>
-            <Divider />
-            <div className="px-4 py-2 text-center">
-              <p className="text-xs text-surface-400">
-                {notifications.length} {notifications.length === 1 ? "notificación" : "notificaciones"}
-              </p>
-            </div>
-          </>
+          <div className="px-4 py-2.5 text-center border-t border-gray-100 bg-gray-50">
+            <p className="text-xs font-medium text-gray-500">
+              {notifications.length} {notifications.length === 1 ? "notificación" : "notificaciones"}
+            </p>
+          </div>
         )}
       </Menu>
     </AppBar>
