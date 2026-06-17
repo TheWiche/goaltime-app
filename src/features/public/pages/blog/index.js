@@ -50,12 +50,12 @@ function Blog() {
                   <p className="text-xs text-gray-400 mb-2">{post.date}</p>
                   <h3 className="font-bold text-dark text-lg mb-2 leading-snug">{post.title}</h3>
                   <p className="text-sm text-gray-500 leading-relaxed mb-4 flex-1">{post.excerpt}</p>
-                  <a
-                    href="#"
+                  <button
+                    type="button"
                     className="w-full block text-center py-2.5 bg-goaltime hover:bg-goaltime-500 text-white text-sm font-semibold rounded-xl transition-colors shadow-goaltime"
                   >
                     Leer Más
-                  </a>
+                  </button>
                 </div>
               </div>
             </motion.div>

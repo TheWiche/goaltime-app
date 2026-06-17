@@ -24,7 +24,6 @@ import {
 } from "firebase/auth";
 import {
   getFirestore,
-  connectFirestoreEmulator,
   doc,
   setDoc,
   updateDoc,
@@ -39,12 +38,10 @@ import {
   orderBy,
   onSnapshot,
   enableNetwork,
-  disableNetwork,
 } from "firebase/firestore";
 import {
   getStorage,
   ref,
-  uploadBytes,
   uploadBytesResumable,
   getDownloadURL,
   deleteObject,
@@ -272,12 +269,12 @@ export const verifyCurrentPassword = async (password) => {
 
 // 👇 FUNCIÓN PARA ENVIAR EMAIL DE RESTABLECIMIENTO DE CONTRASEÑA
 export const sendPasswordReset = async (email) => {
-  try {
-    // Firebase redirigirá a esta URL con el parámetro oobCode
-    // La URL debe estar autorizada en Firebase Console > Authentication > Settings > Authorized domains
-    // IMPORTANTE: En producción, debe usar HTTPS y el dominio debe estar autorizado
+  // Firebase redirigirá a esta URL con el parámetro oobCode
+  // La URL debe estar autorizada en Firebase Console > Authentication > Settings > Authorized domains
+  // IMPORTANTE: En producción, debe usar HTTPS y el dominio debe estar autorizado
+  let continueUrl = "";
 
-    let continueUrl = "";
+  try {
 
     // Determinar la URL correcta según el entorno
     if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {

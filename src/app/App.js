@@ -16,8 +16,6 @@ export default function App() {
     direction,
     layout,
     sidenavColor,
-    transparentSidenav,
-    whiteSidenav,
   } = controller;
   const [onMouseEnter, setOnMouseEnter] = useState(false);
   const { pathname } = useLocation();

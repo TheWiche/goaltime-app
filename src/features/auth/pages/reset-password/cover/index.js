@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import FullScreenLoader from "shared/components/loaders/FullScreenLoader";
 import SplitScreenLayout from "features/auth/components/SplitScreenLayout";
 import { Toast } from "shared/components/ui";
@@ -24,8 +24,6 @@ function Cover() {
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [toast, setToast] = useState({ open: false, type: "info", message: "" });
-  const navigate = useNavigate();
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email) { setToast({ open: true, type: "warning", message: "Por favor, ingresa tu correo electrónico." }); return; }
