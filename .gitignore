@@ -34,3 +34,27 @@ package-lock.json
 yarn.lock
 
 commit.sh
+
+# Secretos / credenciales (nunca commitear)
+.env.*
+!.env.example
+functions/.env.*
+functions/.secret.local
+*.secret.local
+service-account*.json
+*-service-account*.json
+*firebase-adminsdk*.json
+*.pem
+*.key
+*.p12
+
+# Logs de Firebase / emuladores
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+storage-debug.log
+.firebase/
+
+# Scripts locales que puedan contener claves
+clean-secrets.sh

@@ -1,169 +1,98 @@
+import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import {
-  Trophy,
-  MapPin,
-  Banknote,
-  Clock,
-  Calendar,
-  Pencil,
-  CircleCheck,
-  Hourglass,
-  Ban,
-  XCircle,
-} from "lucide-react";
-import { Modal, Button, SectionCard, StatusPill } from "shared/components/ui";
+import { Trophy, Pencil } from "lucide-react";
+import { Modal, Button, StatusPill } from "shared/components/ui";
+import { getFieldStatusMeta } from "shared/utils/reservationStatus";
+import { formatCurrency } from "shared/utils/format";
+import { formatDateEs } from "shared/utils/date";
 
-const STATUS_MAP = {
-  approved: { label: "Aprobada", tone: "success", Icon: CircleCheck },
-  pending: { label: "Pendiente", tone: "warning", Icon: Hourglass },
-  disabled: { label: "Deshabilitada", tone: "neutral", Icon: Ban },
-  rejected: { label: "Rechazada", tone: "danger", Icon: XCircle },
-};
+function DetailRow({ label, children }) {
+  return (
+    <div className="grid grid-cols-[120px_1fr] gap-x-4 border-b border-line-subtle py-2.5 text-sm last:border-b-0">
+      <dt className="text-fg-muted">{label}</dt>
+      <dd className="min-w-0 break-words text-fg">{children}</dd>
+    </div>
+  );
+}
+
+DetailRow.propTypes = { label: PropTypes.string.isRequired, children: PropTypes.node.isRequired };
 
 function FieldDetailsModal({ open, onClose, field }) {
   const navigate = useNavigate();
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => setImageFailed(false), [field?.imageUrl]);
+
   if (!field) return null;
 
-  const status = STATUS_MAP[field.status] || STATUS_MAP.pending;
+  const status = getFieldStatusMeta(field.status);
+  const registered = formatDateEs(field.createdAt, undefined, "");
+  const hours =
+    field.openingTime && field.closingTime ? `${field.openingTime} – ${field.closingTime}` : "—";
 
   return (
     <Modal
       open={open}
       onClose={onClose}
-      size="xl"
-      variant="hero"
+      size="lg"
       eyebrow="Detalle de cancha"
       title={field.name || "Cancha"}
       subtitle={field.address || "Sin dirección registrada"}
-      icon={<Trophy className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />}
-      bodyClassName="bg-slate-50 px-0 py-0"
+      icon={<Trophy className="h-4 w-4" aria-hidden="true" />}
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             Cerrar
           </Button>
           <Button
             type="button"
             variant="primary"
+            leftIcon={<Pencil className="h-4 w-4" aria-hidden="true" />}
             onClick={() => navigate(`/canchas?edit=${field.id}`)}
           >
-            <Pencil className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
             Gestionar cancha
           </Button>
         </>
       }
     >
-      <div className="px-6 sm:px-8 py-7 space-y-6">
+      <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-3">
-          <StatusPill tone={status.tone} icon={<status.Icon className="h-3.5 w-3.5" strokeWidth={2} aria-hidden />}>
-            {status.label}
-          </StatusPill>
-          {field.createdAt?.seconds && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-              <Calendar className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
-              Registrada el{" "}
-              {new Date(field.createdAt.seconds * 1000).toLocaleDateString("es-ES", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </span>
-          )}
+          <StatusPill tone={status.tone}>{status.label}</StatusPill>
+          {registered && <span className="text-xs text-fg-subtle">Registrada el {registered}</span>}
         </div>
 
-        {field.imageUrl && (
-          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-white">
+        {field.imageUrl && !imageFailed && (
+          <div className="overflow-hidden rounded-lg border border-line bg-zinc-50">
             <img
               src={field.imageUrl}
-              alt={field.name}
-              className="w-full aspect-[16/9] object-cover"
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-              }}
+              alt={`Foto de ${field.name || "la cancha"}`}
+              className="aspect-[16/9] w-full object-cover"
+              onError={() => setImageFailed(true)}
             />
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Stat
-            icon={<Banknote className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />}
-            tone="bg-emerald-50 text-emerald-600"
-            label="Precio por hora"
-            value={`$${(field.pricePerHour ?? 0).toLocaleString()}`}
-          />
-          <Stat
-            icon={<Clock className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />}
-            tone="bg-primary-50 text-primary"
-            label="Apertura"
-            value={field.openingTime || "—"}
-          />
-          <Stat
-            icon={<Clock className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />}
-            tone="bg-primary-50 text-primary"
-            label="Cierre"
-            value={field.closingTime || "—"}
-          />
-          <Stat
-            icon={<MapPin className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden />}
-            tone="bg-rose-50 text-rose-600"
-            label="ID"
-            value={
-              <span className="font-mono text-xs text-slate-500 truncate block">{field.id}</span>
-            }
-          />
-        </div>
-
-        <SectionCard
-          eyebrow="Ubicación"
-          title="Dirección de la instalación"
-          icon={<MapPin className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
-          padding="p-5"
-        >
-          <p className="text-sm text-slate-700 leading-relaxed">
-            {field.address || "Sin dirección registrada."}
-          </p>
-        </SectionCard>
-
-        {field.description && (
-          <SectionCard
-            eyebrow="Descripción"
-            title="Información para el público"
-            icon={<Trophy className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
-            padding="p-5"
-          >
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-              {field.description}
-            </p>
-          </SectionCard>
-        )}
+        <dl>
+          <DetailRow label="Precio por hora">
+            <span className="tabular font-medium">{formatCurrency(field.pricePerHour)}</span>
+          </DetailRow>
+          <DetailRow label="Horario">
+            <span className="tabular">{hours}</span>
+          </DetailRow>
+          <DetailRow label="Dirección">{field.address || "Sin dirección registrada."}</DetailRow>
+          {field.description && (
+            <DetailRow label="Descripción">
+              <span className="whitespace-pre-line">{field.description}</span>
+            </DetailRow>
+          )}
+          <DetailRow label="ID">
+            <span className="font-mono text-xs text-fg-muted">{field.id}</span>
+          </DetailRow>
+        </dl>
       </div>
     </Modal>
   );
 }
-
-function Stat({ icon, tone, label, value }) {
-  return (
-    <div className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        <span className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${tone}`}>
-          {icon}
-        </span>
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</p>
-          <p className="text-base font-semibold font-heading text-slate-900 truncate">{value}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-Stat.propTypes = {
-  icon: PropTypes.node.isRequired,
-  tone: PropTypes.string.isRequired,
-  label: PropTypes.string.isRequired,
-  value: PropTypes.node.isRequired,
-};
 
 FieldDetailsModal.propTypes = {
   open: PropTypes.bool.isRequired,
@@ -178,7 +107,7 @@ FieldDetailsModal.propTypes = {
     closingTime: PropTypes.string,
     imageUrl: PropTypes.string,
     status: PropTypes.string,
-    createdAt: PropTypes.shape({ seconds: PropTypes.number }),
+    createdAt: PropTypes.oneOfType([PropTypes.object, PropTypes.string, PropTypes.number]),
   }),
 };
 
