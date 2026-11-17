@@ -21,11 +21,14 @@ import {
   isValidISODate,
   isValidTime,
   minutesFromTime,
+  todayLocalISO,
   tomorrowLocalISO,
 } from "shared/utils/date";
 import { formatCurrency } from "shared/utils/format";
 
 const MAX_DAYS_AHEAD = 90;
+/** Si la fecha es hoy, solo se ofrecen franjas que empiecen al menos con este margen (min). */
+const TODAY_MARGIN_MINUTES = 30;
 
 const DURATION_OPTIONS = Array.from({ length: MAX_RESERVATION_HOURS || 6 }, (_, i) => ({
   value: String(i + 1),
@@ -63,7 +66,7 @@ function ReservationModal({ open, onClose, onSubmit, loading = false, field = nu
   const openingTime = field?.openingTime;
   const closingTime = field?.closingTime;
   const durationHours = Number(duration);
-  const minDate = tomorrowLocalISO();
+  const minDate = todayLocalISO();
   const maxDate = addDaysISO(minDate, MAX_DAYS_AHEAD);
 
   const hoursValid =
@@ -90,7 +93,7 @@ function ReservationModal({ open, onClose, onSubmit, loading = false, field = nu
       return undefined;
     }
     if (!isValidISODate(date) || compareISODate(date, minDate) < 0) {
-      setSlots({ status: "error", times: [], error: "Selecciona una fecha a partir de mañana." });
+      setSlots({ status: "error", times: [], error: "Selecciona una fecha a partir de hoy." });
       return undefined;
     }
 
@@ -101,9 +104,14 @@ function ReservationModal({ open, onClose, onSubmit, loading = false, field = nu
         if (cancelled) return;
         const close = minutesFromTime(closingTime);
         // Defensa adicional: el fin (inicio + duración) no puede pasar del cierre.
+        // Si es hoy, además se descartan las franjas cuyo inicio ya pasó (con margen).
+        const now = new Date();
+        const earliestToday = now.getHours() * 60 + now.getMinutes() + TODAY_MARGIN_MINUTES;
+        const isToday = date === todayLocalISO();
         const valid = (Array.isArray(times) ? times : []).filter((t) => {
           const end = addHoursToTime(t, durationHours);
-          return end !== null && minutesFromTime(end) <= close;
+          if (end === null || minutesFromTime(end) > close) return false;
+          return !isToday || minutesFromTime(t) >= earliestToday;
         });
         setSlots({ status: "ready", times: valid, error: "" });
         setStartTime((prev) => (valid.includes(prev) ? prev : ""));
@@ -222,7 +230,7 @@ function ReservationModal({ open, onClose, onSubmit, loading = false, field = nu
                 setDate(e.target.value);
                 setFormError("");
               }}
-              hint="A partir de mañana."
+              hint="Desde hoy (horas futuras)."
               disabled={loading}
             />
             <Select

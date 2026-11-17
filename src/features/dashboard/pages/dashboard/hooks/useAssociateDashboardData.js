@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "shared/services/firebaseApp";
 import { subscribeToOwnerReservations } from "shared/services/reservationsService";
@@ -16,7 +16,8 @@ const priceOf = (r) => {
 /**
  * Datos del panel de asociado.
  * - Un único listener de canchas propias (ownerId == uid).
- * - Reservas vía subscribeToOwnerReservations (ownerId + fallback por cancha para reservas antiguas).
+ * - Reservas vía subscribeToOwnerReservations (ownerId + fallback por cancha para reservas antiguas),
+ *   pasándole los ids de las canchas propias para no abrir un segundo listener de `canchas`.
  * Todo lo demás (conteos, ingresos, tendencias, serie mensual) se deriva en cliente.
  */
 export default function useAssociateDashboardData(uid) {
@@ -24,6 +25,7 @@ export default function useAssociateDashboardData(uid) {
   const [reservations, setReservations] = useState(null);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const reservationsSubRef = useRef(null);
 
   const reload = useCallback(() => {
     setError("");
@@ -44,17 +46,31 @@ export default function useAssociateDashboardData(uid) {
       }
     );
     const unsubReservations = subscribeToOwnerReservations(uid, (list) => setReservations(list), {
+      includeLegacy: true,
+      ownFieldIds: [],
       onError: (err) => {
         logger.error("useAssociateDashboardData(reservations)", err);
         setError(errorMessage);
         setReservations((prev) => prev || []);
       },
     });
+    reservationsSubRef.current = unsubReservations;
     return () => {
+      reservationsSubRef.current = null;
       unsubFields();
       unsubReservations();
     };
   }, [uid, reloadKey]);
+
+  // Las canchas propias alimentan el fallback legacy de reservas (sin listener extra).
+  const ownFieldIdsKey = useMemo(
+    () => (fieldDocs ? fieldDocs.map((f) => f.id).sort().join("|") : null),
+    [fieldDocs]
+  );
+  useEffect(() => {
+    if (ownFieldIdsKey === null) return;
+    reservationsSubRef.current?.setOwnFieldIds(ownFieldIdsKey ? ownFieldIdsKey.split("|") : []);
+  }, [ownFieldIdsKey, reloadKey]);
 
   const data = useMemo(() => {
     const fieldList = fieldDocs || [];

@@ -9,6 +9,7 @@ import {
   SectionCard,
   SegmentedControl,
   Select,
+  LoadMoreFooter,
   Skeleton,
   StatCard,
   TextField,
@@ -17,8 +18,7 @@ import {
 import { useAuth } from "shared/context/AuthContext";
 import { formatCurrency } from "shared/utils/format";
 import { getStatusLabel, getStatusOptions } from "shared/utils/reservationStatus";
-import useLoadMore from "features/reservations/hooks/useLoadMore";
-import LoadMoreFooter from "features/reservations/components/LoadMoreFooter";
+import useLoadMore from "shared/hooks/useLoadMore";
 import useAssociateReservations, { getClientName } from "./useAssociateReservations";
 import ReservationsTable from "./components/ReservationsTable";
 import ReservationDetailsModal from "./components/ReservationDetailsModal";

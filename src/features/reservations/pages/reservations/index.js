@@ -8,6 +8,7 @@ import {
   PageHeader,
   SectionCard,
   SegmentedControl,
+  LoadMoreFooter,
   Skeleton,
   StatCard,
   TextField,
@@ -17,8 +18,7 @@ import { useAuth } from "shared/context/AuthContext";
 import { subscribeToClientReservations } from "shared/services/firebaseService";
 import useDebounce from "shared/hooks/useDebounce";
 import { getStatusOptions } from "shared/utils/reservationStatus";
-import useLoadMore from "features/reservations/hooks/useLoadMore";
-import LoadMoreFooter from "features/reservations/components/LoadMoreFooter";
+import useLoadMore from "shared/hooks/useLoadMore";
 import ClientReservationsTable from "./components/ClientReservationsTable";
 import TicketModal from "./components/TicketModal";
 

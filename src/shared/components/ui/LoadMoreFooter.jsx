@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
-import { Button, cx } from "shared/components/ui";
+import Button from "./Button";
+import { cx } from "./cx";
 
 /** Pie de lista: "Mostrando X de Y" + botón "Cargar más". */
 function LoadMoreFooter({ shown, total, hasMore, onLoadMore, className = "" }) {

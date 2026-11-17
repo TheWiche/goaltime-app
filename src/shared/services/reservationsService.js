@@ -509,17 +509,27 @@ export const cancelReservation = (reservationId, reason = "") =>
  * Suscripción en tiempo real a las reservas de las canchas de un asociado.
  * Combina:
  *  1) where("ownerId","==",ownerId)  → reservas nuevas (guardan ownerId).
- *  2) (opcional, includeLegacy) por cada cancha del dueño where("fieldId","==",id)
- *     → reservas antiguas sin ownerId (desactívalo tras ejecutar la migración).
+ *  2) (opcional, includeLegacy; activado por defecto) por cada cancha del dueño
+ *     where("fieldId","==",id) → reservas antiguas sin ownerId (desactívalo tras ejecutar
+ *     la migración).
+ * Ids de las canchas del dueño para el fallback legacy:
+ *  - Sin `ownFieldIds` (compatibilidad): se abre un listener interno de `canchas`.
+ *  - Con `ownFieldIds` (array de ids; puede ser []): NO se abre ese listener; quien ya
+ *    tiene las canchas propias las pasa y, si cambian, llama a `unsubscribe.setOwnFieldIds(ids)`.
  * El callback recibe la lista deduplicada, ordenada por createdAt desc.
- * @returns {Function} unsubscribe
+ * @param {string} ownerId
+ * @param {Function} callback
+ * @param {{includeLegacy?: boolean, ownFieldIds?: string[], onError?: Function}} [options]
+ * @returns {Function} unsubscribe (con `.setOwnFieldIds(ids)` para actualizar los ids externos)
  */
 export const subscribeToOwnerReservations = (
   ownerId,
   callback,
-  { includeLegacy = true, onError } = {}
+  { includeLegacy = true, ownFieldIds, onError } = {}
 ) => {
-  if (!ownerId || typeof callback !== "function") return () => {};
+  const noop = () => {};
+  noop.setOwnFieldIds = noop;
+  if (!ownerId || typeof callback !== "function") return noop;
 
   const byOwner = new Map();
   const byField = new Map(); // fieldId -> Map(resId -> data)
@@ -547,50 +557,63 @@ export const subscribeToOwnerReservations = (
     }
   );
 
+  /** Alinea los listeners legacy por cancha con el conjunto de ids dado. */
+  const syncFieldIds = (idList) => {
+    if (!active) return;
+    const ids = new Set(idList);
+    // quitar canchas que ya no existen
+    [...fieldUnsubs.keys()].forEach((fid) => {
+      if (!ids.has(fid)) {
+        fieldUnsubs.get(fid)();
+        fieldUnsubs.delete(fid);
+        byField.delete(fid);
+      }
+    });
+    ids.forEach((fid) => {
+      if (fieldUnsubs.has(fid)) return;
+      const unsub = onSnapshot(
+        query(collection(db, "reservations"), where("fieldId", "==", fid)),
+        (snap) => {
+          const m = new Map();
+          snap.docs.forEach((d) => m.set(d.id, { id: d.id, ...d.data() }));
+          byField.set(fid, m);
+          emit();
+        },
+        () => {
+          // Sin permiso para la consulta legacy: se ignora (queda la de ownerId).
+          byField.delete(fid);
+        }
+      );
+      fieldUnsubs.set(fid, unsub);
+    });
+    emit();
+  };
+
   let unsubFields = () => {};
+  const externalIds = Array.isArray(ownFieldIds);
   if (includeLegacy) {
-    unsubFields = onSnapshot(
-      query(collection(db, "canchas"), where("ownerId", "==", ownerId)),
-      (fieldsSnap) => {
-        const ids = new Set(fieldsSnap.docs.map((d) => d.id));
-        // quitar canchas que ya no existen
-        [...fieldUnsubs.keys()].forEach((fid) => {
-          if (!ids.has(fid)) {
-            fieldUnsubs.get(fid)();
-            fieldUnsubs.delete(fid);
-            byField.delete(fid);
-          }
-        });
-        ids.forEach((fid) => {
-          if (fieldUnsubs.has(fid)) return;
-          const unsub = onSnapshot(
-            query(collection(db, "reservations"), where("fieldId", "==", fid)),
-            (snap) => {
-              const m = new Map();
-              snap.docs.forEach((d) => m.set(d.id, { id: d.id, ...d.data() }));
-              byField.set(fid, m);
-              emit();
-            },
-            () => {
-              // Sin permiso para la consulta legacy: se ignora (queda la de ownerId).
-              byField.delete(fid);
-            }
-          );
-          fieldUnsubs.set(fid, unsub);
-        });
-        emit();
-      },
-      (error) => logger.error("subscribeToOwnerReservations(fields)", error)
-    );
+    if (externalIds) {
+      syncFieldIds(ownFieldIds);
+    } else {
+      unsubFields = onSnapshot(
+        query(collection(db, "canchas"), where("ownerId", "==", ownerId)),
+        (fieldsSnap) => syncFieldIds(fieldsSnap.docs.map((d) => d.id)),
+        (error) => logger.error("subscribeToOwnerReservations(fields)", error)
+      );
+    }
   }
 
-  return () => {
+  const unsubscribe = () => {
     active = false;
     unsubOwner();
     unsubFields();
     fieldUnsubs.forEach((u) => u());
     fieldUnsubs.clear();
   };
+  unsubscribe.setOwnFieldIds = (ids) => {
+    if (includeLegacy && externalIds && Array.isArray(ids)) syncFieldIds(ids);
+  };
+  return unsubscribe;
 };
 
 /**

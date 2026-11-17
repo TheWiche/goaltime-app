@@ -9,7 +9,7 @@ import {
   updateFieldAsAdmin,
 } from "shared/services/firebaseService";
 import useDebounce from "shared/hooks/useDebounce";
-import useLoadMore from "features/fields/hooks/useLoadMore";
+import useLoadMore from "shared/hooks/useLoadMore";
 import FieldFormModal from "features/fields/components/FieldFormModal";
 import ConfirmDialog from "features/fields/components/ConfirmDialog";
 import useFieldsSubscription from "../hooks/useFieldsSubscription";
@@ -32,7 +32,7 @@ const VALID_STATUS = STATUS_FILTERS.map((f) => f.value);
 function AdminCanchasView({ showToast }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { fields, loading, error } = useFieldsSubscription("admin");
+  const { fields, loading, error, retry } = useFieldsSubscription("admin");
 
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const statusParam = params.get("status");
@@ -198,6 +198,7 @@ function AdminCanchasView({ showToast }) {
       <FieldsGrid
         loading={loading}
         error={error}
+        onRetry={retry}
         pager={pager}
         emptyIcon={Building2}
         emptyTitle={search ? "Sin resultados" : "No hay canchas en este estado"}

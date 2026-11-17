@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createNotification,
   getUserProfileById,
   notifyReservationCancelled,
+  notifyReservationCompleted,
   notifyReservationConfirmed,
   sendReservationStatusChangeEmail,
   subscribeToOwnerReservations,
@@ -36,15 +36,21 @@ const dateKey = (r) => `${r.date || ""} ${String(minutesFromTime(r.startTime)).p
  *   fieldId para reservas antiguas sin ownerId). Se desuscribe al desmontar.
  * - clientsMap: nombres de clientes resueltos una sola vez por clientId (sin closures obsoletos).
  * - Filtros (estado, cancha, búsqueda incl. nombre resuelto), orden por fecha y contadores.
+ * - ownFieldIds (opcional): ids de las canchas propias si la página ya las tiene → evita el
+ *   listener interno de canchas del fallback legacy.
  * - changeStatus: ÚNICO camino para confirmar / rechazar / completar (updateReservationStatus).
  */
-export default function useAssociateReservations(ownerId, { enabled = true } = {}) {
+export default function useAssociateReservations(ownerId, { enabled = true, ownFieldIds } = {}) {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [clientsMap, setClientsMap] = useState({});
   const requestedClientsRef = useRef(new Set());
   const mountedRef = useRef(true);
+  const subscriptionRef = useRef(null);
+  // Clave estable de los ids externos (null = el servicio abre su propio listener de canchas).
+  const ownFieldIdsKey = Array.isArray(ownFieldIds) ? [...ownFieldIds].sort().join("|") : null;
+  const hasExternalIds = ownFieldIdsKey !== null;
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 250);
@@ -74,14 +80,24 @@ export default function useAssociateReservations(ownerId, { enabled = true } = {
       },
       {
         includeLegacy: true,
+        ...(hasExternalIds && { ownFieldIds: [] }),
         onError: (err) => {
           setError(err?.message || "No se pudieron cargar las reservas.");
           setLoading(false);
         },
       }
     );
-    return () => unsubscribe();
-  }, [ownerId, enabled]);
+    subscriptionRef.current = unsubscribe;
+    return () => {
+      subscriptionRef.current = null;
+      unsubscribe();
+    };
+  }, [ownerId, enabled, hasExternalIds]);
+
+  useEffect(() => {
+    if (!hasExternalIds) return;
+    subscriptionRef.current?.setOwnFieldIds(ownFieldIdsKey ? ownFieldIdsKey.split("|") : []);
+  }, [ownFieldIdsKey, hasExternalIds, ownerId, enabled]);
 
   // Ids de clientes cuyo nombre no viene en la reserva (clave estable → el efecto solo
   // corre cuando cambia el conjunto, y el ref evita pedir dos veces el mismo usuario).
@@ -177,16 +193,7 @@ export default function useAssociateReservations(ownerId, { enabled = true } = {
       } else if (newStatus === "cancelled") {
         await notifyReservationCancelled(reservation.id, fieldName, reservation.clientId);
       } else if (newStatus === "completed") {
-        await createNotification({
-          userId: reservation.clientId,
-          type: "reservation_completed",
-          title: "Reserva completada",
-          message: `Tu reserva en "${fieldName}" se marcó como completada. ¡Gracias por jugar!`,
-          relatedId: reservation.id,
-          actionUrl: "/reservations",
-          icon: "check_circle",
-          color: "success",
-        }).catch(() => null);
+        await notifyReservationCompleted(reservation.id, fieldName, reservation.clientId);
       }
     }
 

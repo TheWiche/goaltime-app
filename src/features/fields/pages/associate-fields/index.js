@@ -9,6 +9,7 @@ import {
   PageHeader,
   SectionCard,
   SegmentedControl,
+  LoadMoreFooter,
   Skeleton,
   TextField,
   Toast,
@@ -16,10 +17,9 @@ import {
 import { createField, db, toggleFieldStatus, updateField } from "shared/services/firebaseService";
 import { useAuth } from "shared/context/AuthContext";
 import useDebounce from "shared/hooks/useDebounce";
-import useLoadMore from "features/fields/hooks/useLoadMore";
+import useLoadMore from "shared/hooks/useLoadMore";
 import FieldFormModal from "features/fields/components/FieldFormModal";
 import ConfirmDialog from "features/fields/components/ConfirmDialog";
-import LoadMoreFooter from "features/fields/components/LoadMoreFooter";
 import { matchesFieldSearch } from "features/fields/utils/fieldSearch";
 import FieldsTable from "./components/FieldsTable";
 
@@ -57,6 +57,7 @@ function AssociateFields() {
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 250);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -92,7 +93,7 @@ function AssociateFields() {
       }
     );
     return () => unsubscribe();
-  }, [uid]);
+  }, [uid, reloadKey]);
 
   // ?add=true abre el alta (accesos directos del dashboard).
   useEffect(() => {
@@ -178,6 +179,11 @@ function AssociateFields() {
         icon={AlertTriangle}
         title="No pudimos cargar tus canchas"
         description={loadError}
+        action={
+          <Button type="button" size="sm" variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>
+            Reintentar
+          </Button>
+        }
       />
     );
   } else if (fields.length === 0) {

@@ -1,16 +1,19 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "shared/services/firebaseService";
 
 const byCreatedDesc = (a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0);
 
 /**
+ * `retry()` vuelve a suscribirse (cambia una key del efecto) sin recargar la página.
  * Canchas en tiempo real según el rol:
  *  - admin: todas (el filtro por estado se aplica en memoria para poder contar).
  *  - resto: solo aprobadas (lo que permiten las reglas).
  */
 export default function useFieldsSubscription(role) {
   const [state, setState] = useState({ fields: [], loading: true, error: "" });
+  const [retryKey, setRetryKey] = useState(0);
+  const retry = useCallback(() => setRetryKey((k) => k + 1), []);
 
   useEffect(() => {
     if (!role) return undefined;
@@ -34,7 +37,7 @@ export default function useFieldsSubscription(role) {
       }
     );
     return () => unsubscribe();
-  }, [role]);
+  }, [role, retryKey]);
 
-  return state;
+  return { ...state, retry };
 }

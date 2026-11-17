@@ -1,7 +1,6 @@
 import PropTypes from "prop-types";
 import { AlertTriangle, Search } from "lucide-react";
-import { Button, EmptyState, SkeletonGrid, TextField } from "shared/components/ui";
-import LoadMoreFooter from "features/fields/components/LoadMoreFooter";
+import { Button, EmptyState, LoadMoreFooter, SkeletonGrid, TextField } from "shared/components/ui";
 
 /** Barra de filtros sobre el grid: búsqueda + filtros + extra a la derecha. */
 export function FieldsToolbar({ search, onSearchChange, placeholder, filters, extra }) {
@@ -35,7 +34,7 @@ FieldsToolbar.propTypes = {
  * Grid de canchas con estados de carga / error / vacío y paginación "Cargar más".
  * `renderCard(field)` devuelve la tarjeta (con su `key`).
  */
-function FieldsGrid({ loading, error, pager, renderCard, emptyTitle, emptyDescription, emptyIcon, onClearFilters }) {
+function FieldsGrid({ loading, error, onRetry, pager, renderCard, emptyTitle, emptyDescription, emptyIcon, onClearFilters }) {
   if (loading) return <SkeletonGrid count={6} className="xl:grid-cols-3" />;
   if (error) {
     return (
@@ -44,9 +43,11 @@ function FieldsGrid({ loading, error, pager, renderCard, emptyTitle, emptyDescri
         title="No pudimos cargar las canchas"
         description={error}
         action={
-          <Button type="button" size="sm" variant="secondary" onClick={() => window.location.reload()}>
-            Reintentar
-          </Button>
+          onRetry ? (
+            <Button type="button" size="sm" variant="secondary" onClick={onRetry}>
+              Reintentar
+            </Button>
+          ) : null
         }
       />
     );
@@ -85,6 +86,7 @@ function FieldsGrid({ loading, error, pager, renderCard, emptyTitle, emptyDescri
 FieldsGrid.propTypes = {
   loading: PropTypes.bool,
   error: PropTypes.string,
+  onRetry: PropTypes.func,
   pager: PropTypes.shape({
     visibleItems: PropTypes.array.isRequired,
     total: PropTypes.number.isRequired,

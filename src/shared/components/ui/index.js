@@ -25,4 +25,5 @@ export {
 } from "./Table";
 export { Tabs, SegmentedControl, getTabPanelProps } from "./Tabs";
 export { default as Avatar } from "./Avatar";
+export { default as LoadMoreFooter } from "./LoadMoreFooter";
 export { cx, focusRing } from "./cx";

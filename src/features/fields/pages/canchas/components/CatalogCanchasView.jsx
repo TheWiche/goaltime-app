@@ -12,7 +12,7 @@ import {
   subscribeToFavorites,
 } from "shared/services/firebaseService";
 import useDebounce from "shared/hooks/useDebounce";
-import useLoadMore from "features/fields/hooks/useLoadMore";
+import useLoadMore from "shared/hooks/useLoadMore";
 import useFieldsSubscription from "../hooks/useFieldsSubscription";
 import useScrollToField from "../hooks/useScrollToField";
 import FieldCard from "./FieldCard";
@@ -30,7 +30,7 @@ function CatalogCanchasView({ role, currentUser, userProfile, showToast }) {
   const navigate = useNavigate();
   const isClient = role === "cliente";
   const uid = currentUser?.uid || null;
-  const { fields, loading, error } = useFieldsSubscription(role);
+  const { fields, loading, error, retry } = useFieldsSubscription(role);
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 250);
@@ -201,6 +201,7 @@ function CatalogCanchasView({ role, currentUser, userProfile, showToast }) {
       <FieldsGrid
         loading={loading}
         error={error}
+        onRetry={retry}
         pager={pager}
         emptyIcon={scope === "favorites" ? Heart : Building2}
         emptyTitle={emptyTitle}

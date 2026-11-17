@@ -299,3 +299,18 @@ export const notifyReservationCancelled = (reservationId, fieldName, clientId) =
     },
     "notifyReservationCancelled"
   );
+
+export const notifyReservationCompleted = (reservationId, fieldName, clientId) =>
+  safeNotify(
+    {
+      userId: clientId,
+      type: "reservation_completed",
+      title: "Reserva Completada",
+      message: `Tu reserva en "${fieldName}" se marcó como completada. ¡Gracias por jugar!`,
+      relatedId: reservationId,
+      actionUrl: "/reservations",
+      icon: "check_circle",
+      color: "success",
+    },
+    "notifyReservationCompleted"
+  );
