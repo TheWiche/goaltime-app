@@ -1,6 +1,6 @@
 // src/shared/components/routing/ProtectedRoute.js
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useAuth } from "shared/context/AuthContext";
@@ -18,6 +18,20 @@ import { getHomePathForRole } from "shared/utils/url";
 function ProtectedRoute({ children, roles }) {
   const { currentUser, userProfile, emailVerified, isSocialAuth, initialAuthLoading } = useAuth();
   const location = useLocation();
+  const [profileTimedOut, setProfileTimedOut] = useState(false);
+
+  const needsProfile = Array.isArray(roles) && roles.length > 0 && Boolean(currentUser) && !userProfile;
+
+  // El perfil llega por onSnapshot justo después del login: se espera un momento
+  // antes de decidir que el rol "no existe".
+  useEffect(() => {
+    if (!needsProfile) {
+      setProfileTimedOut(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setProfileTimedOut(true), 4000);
+    return () => clearTimeout(t);
+  }, [needsProfile]);
 
   if (initialAuthLoading) return <FullScreenLoader />;
 
@@ -29,6 +43,8 @@ function ProtectedRoute({ children, roles }) {
   if (!isEmailVerified && !isSocialAuth) {
     return <Navigate to="/authentication/verify-email" state={{ from: location }} replace />;
   }
+
+  if (needsProfile && !profileTimedOut) return <FullScreenLoader />;
 
   if (Array.isArray(roles) && roles.length > 0) {
     const role = userProfile?.role || null;
