@@ -1,149 +1,179 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
+import { AlertTriangle, CalendarOff, CircleCheck, Flag, Hourglass, Lock, Plus, Search, XCircle } from "lucide-react";
 import { DashboardLayout, DashboardNavbar, Footer } from "shared/components/layout";
 import {
+  Button,
+  EmptyState,
   PageHeader,
   SectionCard,
-  StatusPill,
-  Button,
+  SegmentedControl,
+  Skeleton,
   StatCard,
+  TextField,
+  Toast,
 } from "shared/components/ui";
-import {
-  Plus,
-  Search,
-  MapPin,
-  Calendar,
-  Clock,
-  Ticket,
-  CalendarOff,
-  Hourglass,
-  CircleCheck,
-  XCircle,
-  Banknote,
-  Trophy,
-} from "lucide-react";
 import { useAuth } from "shared/context/AuthContext";
-import { db } from "shared/services/firebaseService";
+import { subscribeToClientReservations } from "shared/services/firebaseService";
+import useDebounce from "shared/hooks/useDebounce";
+import { getStatusOptions } from "shared/utils/reservationStatus";
+import useLoadMore from "features/reservations/hooks/useLoadMore";
+import LoadMoreFooter from "features/reservations/components/LoadMoreFooter";
+import ClientReservationsTable from "./components/ClientReservationsTable";
 import TicketModal from "./components/TicketModal";
 
-const STATUS = {
-  pending: { label: "Pendiente", tone: "warning" },
-  confirmed: { label: "Confirmada", tone: "success" },
-  cancelled: { label: "Cancelada", tone: "danger" },
-  completed: { label: "Completada", tone: "info" },
-};
+const FILTERS = getStatusOptions({ includeAll: true, allLabel: "Todas" });
 
-const FILTERS = [
-  { value: "all", label: "Todas" },
-  { value: "pending", label: "Pendientes" },
-  { value: "confirmed", label: "Confirmadas" },
-  { value: "completed", label: "Completadas" },
-  { value: "cancelled", label: "Canceladas" },
-];
+const normalize = (v) =>
+  String(v || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 
-function formatDate(value) {
-  if (!value) return "—";
-  let d;
-  if (value.seconds) d = new Date(value.seconds * 1000);
-  else if (typeof value === "string" && value.includes("-")) d = new Date(value);
-  else if (value instanceof Date) d = value;
-  else return "—";
-  return d.toLocaleDateString("es-ES", { year: "numeric", month: "long", day: "numeric" });
+function ListSkeleton() {
+  return (
+    <div className="divide-y divide-line-subtle" aria-hidden="true">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4 px-4 py-3">
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3 w-44" />
+            <Skeleton className="h-3 w-64 max-w-full" />
+          </div>
+          <Skeleton className="hidden h-3 w-20 sm:block" />
+          <Skeleton className="h-5 w-20" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function Reservations() {
   const { userProfile, currentUser } = useAuth();
   const navigate = useNavigate();
-  const [reservations, setReservations] = useState([]);
-  const [loadingReservations, setLoadingReservations] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
-  const [selectedReservation, setSelectedReservation] = useState(null);
+  const uid = currentUser?.uid;
+  const isClient = userProfile?.role === "cliente";
 
+  const [reservations, setReservations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 250);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedId, setSelectedId] = useState(null);
+  const [toast, setToast] = useState({ open: false, type: "info", message: "" });
+
+  const showToast = useCallback((message, type = "info") => setToast({ open: true, type, message }), []);
+
+  // Un único listener (where clientId == uid, orden en cliente: no requiere índice).
   useEffect(() => {
-    if (!currentUser || userProfile?.role !== "cliente") {
-      setLoadingReservations(false);
+    if (!uid || !isClient) {
+      setLoading(false);
       return undefined;
     }
-
-    setLoadingReservations(true);
-
-    const reservationsQuery = query(
-      collection(db, "reservations"),
-      where("clientId", "==", currentUser.uid),
-      orderBy("createdAt", "desc")
-    );
-
-    const unsubscribe = onSnapshot(
-      reservationsQuery,
-      (snap) => {
-        setReservations(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoadingReservations(false);
+    setLoading(true);
+    setLoadError("");
+    const unsubscribe = subscribeToClientReservations(
+      uid,
+      (list) => {
+        setReservations(list);
+        setLoading(false);
       },
-      (error) => {
-        if (error.code === "failed-precondition" || error.message?.includes("index")) {
-          const simpleQuery = query(
-            collection(db, "reservations"),
-            where("clientId", "==", currentUser.uid)
-          );
-          const unsubSimple = onSnapshot(simpleQuery, (snap) => {
-            const data = snap.docs
-              .map((d) => ({ id: d.id, ...d.data() }))
-              .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-            setReservations(data);
-            setLoadingReservations(false);
-          });
-          return unsubSimple;
-        }
-        setLoadingReservations(false);
-        return undefined;
+      {
+        onError: (error) => setLoadError(error?.message || "No se pudieron cargar tus reservaciones."),
       }
     );
-
     return () => unsubscribe();
-  }, [currentUser, userProfile]);
+  }, [uid, isClient]);
+
+  const counts = useMemo(() => {
+    const c = { all: reservations.length, pending: 0, confirmed: 0, completed: 0, cancelled: 0 };
+    reservations.forEach((r) => {
+      if (c[r.status] !== undefined) c[r.status] += 1;
+    });
+    return c;
+  }, [reservations]);
 
   const filtered = useMemo(() => {
-    let list = [...reservations];
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      list = list.filter(
-        (r) =>
-          r.fieldName?.toLowerCase().includes(q) ||
-          r.fieldAddress?.toLowerCase().includes(q)
-      );
-    }
-    if (statusFilter !== "all") {
-      list = list.filter((r) => r.status === statusFilter);
-    }
-    return list;
-  }, [reservations, searchTerm, statusFilter]);
+    const q = normalize(debouncedSearch).trim();
+    return reservations.filter(
+      (r) =>
+        (statusFilter === "all" || r.status === statusFilter) &&
+        (!q || normalize(r.fieldName).includes(q) || normalize(r.fieldAddress).includes(q))
+    );
+  }, [reservations, statusFilter, debouncedSearch]);
 
-  const counts = useMemo(
-    () => ({
-      total: reservations.length,
-      pending: reservations.filter((r) => r.status === "pending").length,
-      confirmed: reservations.filter((r) => r.status === "confirmed").length,
-      cancelled: reservations.filter((r) => r.status === "cancelled").length,
-    }),
-    [reservations]
+  const pager = useLoadMore(filtered, { resetKey: `${statusFilter}|${debouncedSearch}` });
+
+  // Se busca por id para que el ticket refleje cambios en tiempo real (p.ej. confirmación).
+  const selectedReservation = useMemo(
+    () => (selectedId ? reservations.find((r) => r.id === selectedId) || null : null),
+    [selectedId, reservations]
   );
 
-  if (userProfile?.role !== "cliente") {
+  if (userProfile && !isClient) {
     return (
       <DashboardLayout>
         <DashboardNavbar />
-        <SectionCard>
-          <h2 className="text-2xl font-semibold font-heading text-slate-900 mb-2">
-            Acceso restringido
-          </h2>
-          <p className="text-slate-600">Esta página está disponible solo para clientes.</p>
-        </SectionCard>
+        <EmptyState
+          icon={Lock}
+          title="Acceso restringido"
+          description="Esta página está disponible solo para clientes."
+          action={
+            <Button type="button" size="sm" variant="secondary" onClick={() => navigate("/dashboard")}>
+              Ir al panel
+            </Button>
+          }
+        />
         <Footer />
       </DashboardLayout>
     );
+  }
+
+  let body;
+  if (loading) body = <ListSkeleton />;
+  else if (loadError && reservations.length === 0) {
+    body = (
+      <EmptyState bordered={false} icon={AlertTriangle} title="No pudimos cargar tus reservaciones" description={loadError} />
+    );
+  } else if (reservations.length === 0) {
+    body = (
+      <EmptyState
+        bordered={false}
+        icon={CalendarOff}
+        title="Aún no tienes reservaciones"
+        description="Reserva una cancha y aparecerá aquí con su ticket."
+        action={
+          <Button type="button" size="sm" onClick={() => navigate("/canchas")}>
+            Ver canchas
+          </Button>
+        }
+      />
+    );
+  } else if (filtered.length === 0) {
+    body = (
+      <EmptyState
+        bordered={false}
+        size="sm"
+        icon={Search}
+        title="Sin resultados"
+        description="Ninguna reservación coincide con los filtros."
+        action={
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setSearch("");
+              setStatusFilter("all");
+            }}
+          >
+            Limpiar filtros
+          </Button>
+        }
+      />
+    );
+  } else {
+    body = <ClientReservationsTable reservations={pager.visibleItems} onOpen={(r) => setSelectedId(r.id)} />;
   }
 
   return (
@@ -151,170 +181,78 @@ function Reservations() {
       <DashboardNavbar />
 
       <PageHeader
-        eyebrow="Cliente · Reservas"
         title="Mis reservaciones"
-        subtitle="Gestiona y consulta el historial completo de tus reservas."
+        subtitle="Consulta el estado de tus reservas y descarga sus tickets."
         actions={
-          <Button variant="primary" size="md" onClick={() => navigate("/canchas")}>
-            <Plus className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+          <Button type="button" leftIcon={<Plus className="h-4 w-4" />} onClick={() => navigate("/canchas")}>
             Nueva reserva
           </Button>
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard icon={Ticket} color="primary" title="Total" value={counts.total} subtitle="Reservas históricas" />
-        <StatCard icon={Hourglass} color="warning" title="Pendientes" value={counts.pending} subtitle="En espera" />
-        <StatCard icon={CircleCheck} color="success" title="Confirmadas" value={counts.confirmed} subtitle="Listas" />
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard icon={Hourglass} color="warning" title="Pendientes" value={counts.pending} subtitle="Esperando al dueño" />
+        <StatCard icon={CircleCheck} color="success" title="Confirmadas" value={counts.confirmed} subtitle="Listas para jugar" />
+        <StatCard icon={Flag} color="primary" title="Completadas" value={counts.completed} subtitle="Partidos jugados" />
         <StatCard icon={XCircle} color="danger" title="Canceladas" value={counts.cancelled} subtitle="No realizadas" />
       </div>
 
-      <SectionCard padding="p-4 sm:p-5" className="mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-          <div className="relative flex-1">
-            <Search
-              className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
-              strokeWidth={2}
-              aria-hidden
+      <SectionCard padding="p-0">
+        <div className="flex flex-col gap-2 border-b border-line p-3 md:flex-row md:items-center">
+          <TextField
+            size="sm"
+            type="search"
+            leftIcon={<Search />}
+            placeholder="Buscar por cancha o dirección"
+            aria-label="Buscar reservaciones"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="md:w-64"
+          />
+          <div className="-mx-1 overflow-x-auto px-1">
+            <SegmentedControl
+              aria-label="Filtrar por estado"
+              size="sm"
+              items={FILTERS.map((f) => ({ ...f, count: counts[f.value] }))}
+              value={statusFilter}
+              onChange={setStatusFilter}
             />
-            <input
-              type="text"
-              placeholder="Buscar por cancha o dirección..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-11 pl-11 pr-4 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 transition-all duration-200 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/20"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map((opt) => {
-              const active = statusFilter === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setStatusFilter(opt.value)}
-                  className={[
-                    "h-9 px-3.5 rounded-lg text-sm font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
-                    active
-                      ? "bg-primary text-white border-primary shadow-sm"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300",
-                  ].join(" ")}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
           </div>
         </div>
+        {loadError && reservations.length > 0 && (
+          <div className="flex gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            {loadError}
+          </div>
+        )}
+        {body}
+        {!loading && filtered.length > 0 && (
+          <LoadMoreFooter
+            className="border-t border-line px-4 py-3"
+            shown={pager.visibleItems.length}
+            total={pager.total}
+            hasMore={pager.hasMore}
+            onLoadMore={pager.loadMore}
+          />
+        )}
       </SectionCard>
 
-      {loadingReservations ? (
-        <SectionCard>
-          <p className="text-center text-slate-500 py-8">Cargando reservaciones...</p>
-        </SectionCard>
-      ) : filtered.length === 0 ? (
-        <SectionCard padding="p-12">
-          <div className="text-center max-w-md mx-auto">
-            <div className="w-16 h-16 rounded-2xl bg-primary-50 text-primary mx-auto mb-4 flex items-center justify-center">
-              <CalendarOff className="h-8 w-8" strokeWidth={2} aria-hidden />
-            </div>
-            <h3 className="text-xl font-semibold font-heading text-slate-900 mb-2">
-              {reservations.length === 0
-                ? "No tienes reservaciones aún"
-                : "Sin resultados"}
-            </h3>
-            <p className="text-sm text-slate-500 mb-6">
-              {reservations.length === 0
-                ? "¡Comienza a reservar canchas y aparecerán aquí!"
-                : "Intenta ajustar los filtros."}
-            </p>
-            {reservations.length === 0 && (
-              <Button variant="primary" size="md" onClick={() => navigate("/canchas")}>
-                <Trophy className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
-                Ver canchas disponibles
-              </Button>
-            )}
-          </div>
-        </SectionCard>
-      ) : (
-        <div className="space-y-4">
-          {filtered.map((r) => {
-            const st = STATUS[r.status] || { label: r.status, tone: "neutral" };
-            return (
-              <article
-                key={r.id}
-                className="rounded-xl bg-white border border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md hover:border-primary/30"
-              >
-                <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
-                  <div className="lg:col-span-7 min-w-0">
-                    <div className="flex items-start gap-4">
-                      <span className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-primary-50 to-secondary/15 flex items-center justify-center text-primary">
-                        <Trophy className="h-6 w-6" strokeWidth={2} aria-hidden />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-lg font-semibold font-heading text-slate-900 truncate">
-                          {r.fieldName || "Cancha"}
-                        </h3>
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm text-slate-600">
-                          <span className="flex items-center gap-1.5 truncate">
-                            <MapPin className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
-                            <span className="truncate">{r.fieldAddress || "Sin dirección"}</span>
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
-                            {formatDate(r.date)}
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <Clock className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
-                            {r.startTime} – {r.endTime}
-                          </span>
-                          {r.totalPrice && (
-                            <span className="flex items-center gap-1.5 font-semibold text-emerald-600">
-                              <Banknote className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />${r.totalPrice}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="lg:col-span-3 flex items-center justify-start lg:justify-center gap-3">
-                    <StatusPill tone={st.tone} size="md" dot>
-                      {st.label}
-                    </StatusPill>
-                  </div>
-
-                  <div className="lg:col-span-2 flex justify-start lg:justify-end">
-                    <Button
-                      variant="ghost"
-                      size="md"
-                      onClick={() => {
-                        setSelectedReservation(r);
-                        setIsTicketModalOpen(true);
-                      }}
-                    >
-                      <Ticket className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
-                      Ver ticket
-                    </Button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      )}
+      <Footer />
 
       <TicketModal
-        open={isTicketModalOpen}
-        onClose={() => {
-          setIsTicketModalOpen(false);
-          setSelectedReservation(null);
-        }}
+        open={Boolean(selectedReservation)}
+        onClose={() => setSelectedId(null)}
         reservation={selectedReservation}
         userProfile={userProfile}
+        onNotify={showToast}
       />
 
-      <Footer />
+      <Toast
+        open={toast.open}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((t) => ({ ...t, open: false }))}
+      />
     </DashboardLayout>
   );
 }
