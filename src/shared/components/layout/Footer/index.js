@@ -5,14 +5,14 @@ function Footer({ company, links }) {
   const year = new Date().getFullYear();
   const { href, name } = company;
   const brandClass =
-    "font-semibold text-primary uppercase tracking-[0.06em] hover:text-primary-800 transition-colors duration-200";
+    "font-medium text-fg hover:text-primary-700 transition-colors duration-150";
   const isExternal = typeof href === "string" && /^https?:\/\//i.test(href);
 
   return (
-    <footer className="w-full mt-10 border-t border-slate-200/90 bg-surface">
-      <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8 py-4">
+    <footer className="mt-10 w-full border-t border-line bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-center sm:text-left text-[13px] text-slate-500 leading-relaxed">
+          <p className="text-center sm:text-left text-xs text-fg-subtle leading-relaxed">
             © {year}{" "}
             {isExternal ? (
               <a href={href} target="_blank" rel="noopener noreferrer" className={brandClass}>
@@ -23,7 +23,6 @@ function Footer({ company, links }) {
                 {name}
               </RouterLink>
             )}
-            {" "}
             . Todos los derechos reservados.
           </p>
           <nav aria-label="Enlaces del pie">
@@ -33,7 +32,7 @@ function Footer({ company, links }) {
                   {link.isInternal ? (
                     <RouterLink
                       to={link.href}
-                      className="text-[12px] font-semibold uppercase tracking-[0.08em] text-primary hover:text-primary-800 transition-colors duration-200"
+                      className="text-xs font-medium text-fg-muted hover:text-fg transition-colors duration-150"
                     >
                       {link.name}
                     </RouterLink>
@@ -42,7 +41,7 @@ function Footer({ company, links }) {
                       href={link.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[12px] font-semibold uppercase tracking-[0.08em] text-primary hover:text-primary-800 transition-colors duration-200"
+                      className="text-xs font-medium text-fg-muted hover:text-fg transition-colors duration-150"
                     >
                       {link.name}
                     </a>

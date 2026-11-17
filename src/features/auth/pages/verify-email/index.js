@@ -1,440 +1,359 @@
-import { MDBox, MDTypography, MDButton, MDSnackbar } from "shared/components/md-shims";
-// src/layouts/authentication/verify-email/index.js
-
-import { useState, useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Mail, CircleCheck, RefreshCw } from "lucide-react";
-import Spinner from "shared/components/ui/Spinner";
-import SplitScreenLayout from "features/auth/components/SplitScreenLayout";
-import bgImage from "assets/images/bg-sign-up-cover.png";
-import { auth, resendVerificationEmail, verifyEmailWithCode } from "shared/services/firebaseService";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { CircleAlert, CircleCheck, Mail, RefreshCw } from "lucide-react";
+import { Button, Spinner, Toast } from "shared/components/ui";
+import ButtonLink from "shared/components/layout/ButtonLink";
+import AuthShell from "features/auth/components/AuthShell";
+import { getAuthErrorMessage } from "features/auth/utils/authErrors";
+import { logoutUser, resendVerificationEmail, verifyEmailWithCode } from "shared/services/firebaseService";
 import { useAuth } from "shared/context/AuthContext";
+import { getHomePathForRole } from "shared/utils/url";
+
+const SIGN_IN_PATH = "/authentication/sign-in";
+const SIGN_UP_PATH = "/authentication/sign-up";
+const RESEND_COOLDOWN_S = 60;
+const TOO_MANY_COOLDOWN_S = 300;
+const REDIRECT_WITH_ROLE_MS = 1200;
+const REDIRECT_NO_ROLE_MS = 4000;
+
+const ASIDE = {
+  heading: "Un último paso.",
+  description: "Confirma tu correo para activar tu cuenta y empezar a reservar.",
+  points: [
+    "Abre el enlace que te enviamos",
+    "Esta página se actualiza sola al verificar",
+    "Revisa spam si no lo ves en unos minutos",
+  ],
+};
+
+const storageKeyFor = (uid) => `goaltime:verifyCooldown:${uid}`;
+
+const readCooldown = (uid) => {
+  try {
+    const until = Number(window.localStorage.getItem(storageKeyFor(uid)));
+    return Number.isFinite(until) && until > Date.now() ? until : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const writeCooldown = (uid, until) => {
+  try {
+    window.localStorage.setItem(storageKeyFor(uid), String(until));
+  } catch {
+    /* almacenamiento no disponible: el cooldown solo vive en memoria */
+  }
+};
+
+const sendErrorMessage = (code) => {
+  if (code === "auth/unauthorized-continue-uri") {
+    return "Tu cuenta se creó, pero este dominio no está autorizado para enviar el correo. Contacta al administrador.";
+  }
+  if (code === "auth/too-many-requests") {
+    return "Tu cuenta se creó, pero hay demasiados envíos recientes. Espera unos minutos y reenvía el correo.";
+  }
+  return "Tu cuenta se creó, pero no pudimos enviar el correo de verificación. Pulsa «Reenviar correo».";
+};
+
+function Notice({ tone, children }) {
+  const tones = {
+    error: "border-red-200 bg-red-50 text-red-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-800",
+    success: "border-green-200 bg-green-50 text-green-700",
+  };
+  const Icon = tone === "success" ? CircleCheck : CircleAlert;
+  return (
+    <div
+      role={tone === "success" ? "status" : "alert"}
+      className={`flex items-start gap-3 rounded-md border p-3 text-[13px] leading-5 ${tones[tone]}`}
+    >
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <div>{children}</div>
+    </div>
+  );
+}
 
 function VerifyEmail() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
-  const [isVerified, setIsVerified] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
-  const [isResending, setIsResending] = useState(false);
-  const [errorSB, setErrorSB] = useState(false);
-  const [successSB, setSuccessSB] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [userEmail, setUserEmail] = useState("");
-  const [cooldownSeconds, setCooldownSeconds] = useState(0);
-  const checkIntervalRef = useRef(null);
-  const cooldownIntervalRef = useRef(null);
-  const { userProfile, initialAuthLoading, currentUser } = useAuth();
+  const { currentUser, userProfile, emailVerified, isSocialAuth, refreshEmailVerification } = useAuth();
 
-  const openErrorSB = () => setErrorSB(true);
-  const closeErrorSB = () => setErrorSB(false);
-  const openSuccessSB = () => setSuccessSB(true);
-  const closeSuccessSB = () => setSuccessSB(false);
+  const oobCode = searchParams.get("oobCode") || searchParams.get("oobcode");
+  const mode = searchParams.get("mode");
+  const hasCodeFlow = Boolean(oobCode && mode === "verifyEmail");
 
-  // Cargar cooldown desde localStorage
+  // "idle" | "applying" | "applied" | "failed"
+  const [codeStatus, setCodeStatus] = useState(hasCodeFlow ? "applying" : "idle");
+  const [codeError, setCodeError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const [toast, setToast] = useState({ open: false, type: "info", message: "" });
+  const applyPromiseRef = useRef(null);
+  const leavingRef = useRef(false);
+  const initialCooldownRef = useRef(false);
+
+  const uid = currentUser?.uid || null;
+  const role = userProfile?.role || null;
+  const verified = Boolean(currentUser && (currentUser.emailVerified || emailVerified || isSocialAuth));
+  const sendErrorCode = location.state?.sendErrorCode ?? null;
+  const justRegistered = Boolean(location.state && "sendErrorCode" in location.state);
+
+  const notify = useCallback(
+    (type, message) => setToast({ open: true, type, message }),
+    []
+  );
+
+  const startCooldown = useCallback(
+    (seconds) => {
+      const until = Date.now() + seconds * 1000;
+      setCooldownUntil(until);
+      setNow(Date.now());
+      if (uid) writeCooldown(uid, until);
+    },
+    [uid]
+  );
+
+  // 1) Aplica el oobCode (?mode=verifyEmail&oobCode=…) una sola vez y limpia la URL.
   useEffect(() => {
-    if (currentUser) {
-      const storedCooldown = localStorage.getItem(`emailCooldown_${currentUser.uid}`);
-      const storedTime = localStorage.getItem(`emailCooldownTime_${currentUser.uid}`);
-
-      if (storedCooldown && storedTime) {
-        const elapsed = Math.floor((Date.now() - parseInt(storedTime)) / 1000);
-        const remaining = Math.max(0, parseInt(storedCooldown) - elapsed);
-
-        if (remaining > 0) {
-          setCooldownSeconds(remaining);
-        } else {
-          localStorage.removeItem(`emailCooldown_${currentUser.uid}`);
-          localStorage.removeItem(`emailCooldownTime_${currentUser.uid}`);
-        }
-      }
-    }
-  }, [currentUser]);
-
-  // Verificar estado del email y procesar oobCode si existe
-  useEffect(() => {
-    if (initialAuthLoading) return;
-
-    const checkVerification = async () => {
-      // PRIMERO: Si hay un oobCode en la URL, procesarlo
-      const oobCode = searchParams.get("oobCode") || searchParams.get("oobcode");
-      const mode = searchParams.get("mode");
-
-      if (oobCode && mode === "verifyEmail") {
-        console.log("Procesando código de verificación desde URL");
-        setIsChecking(true);
-
-        try {
-          await verifyEmailWithCode(oobCode);
-          console.log("Email verificado exitosamente");
-
-          // Limpiar la URL removiendo los parámetros
-          window.history.replaceState({}, "", window.location.pathname);
-
-          // Esperar un momento para que Firebase actualice el estado
-          await new Promise((resolve) => setTimeout(resolve, 500));
-
-          // Recargar el usuario para obtener el estado actualizado
-          const user = auth.currentUser;
-          if (user) {
-            await user.reload();
-          }
-        } catch (error) {
-          console.error("Error verificando email con código:", error);
-          setErrorMessage(
-            "El enlace de verificación no es válido o ha expirado. Por favor, solicita uno nuevo."
-          );
-          openErrorSB();
-          setIsChecking(false);
-          return;
-        }
-      }
-
-      const user = auth.currentUser;
-
-      if (!user) {
-        navigate("/authentication/sign-up", { replace: true });
-        return;
-      }
-
-      setUserEmail(user.email || "");
-
-      try {
-        // Recargar usuario para obtener estado más reciente
-        await user.reload();
-        const verified = user.emailVerified;
-
-        setIsVerified(verified);
-        setIsChecking(false);
-
-        if (verified) {
-          setSuccessMessage("¡Email verificado exitosamente! Redirigiendo...");
-          openSuccessSB();
-
-          // IMPORTANTE: Esperar a que el perfil se cargue antes de redirigir
-          // Si userProfile no está disponible, esperar un poco más
-          const redirectWithRole = () => {
-            if (userProfile?.role === "cliente") {
-              navigate("/canchas", { replace: true });
-            } else if (userProfile?.role) {
-              navigate("/dashboard", { replace: true });
-            } else {
-              // Si no tenemos el perfil aún, redirigir a dashboard por defecto
-              // El ProtectedRoute o Dashboard manejará la redirección correcta
-              navigate("/dashboard", { replace: true });
-            }
-          };
-
-          // Redirigir inmediatamente si tenemos el perfil, sino esperar un poco
-          if (userProfile?.role) {
-            setTimeout(redirectWithRole, 1000);
-          } else {
-            // Esperar un poco más para que se cargue el perfil
-            setTimeout(redirectWithRole, 2000);
-          }
-          return;
-        }
-
-        // Si no está verificado, verificar periódicamente cada 2 segundos
-        checkIntervalRef.current = setInterval(async () => {
-          try {
-            await user.reload();
-            if (user.emailVerified) {
-              setIsVerified(true);
-              setIsChecking(false);
-              setSuccessMessage("¡Email verificado exitosamente! Redirigiendo...");
-              openSuccessSB();
-
-              if (checkIntervalRef.current) {
-                clearInterval(checkIntervalRef.current);
-              }
-
-              const redirectWithRole = () => {
-                if (userProfile?.role === "cliente") {
-                  navigate("/canchas", { replace: true });
-                } else if (userProfile?.role) {
-                  navigate("/dashboard", { replace: true });
-                } else {
-                  // Si no tenemos el perfil aún, redirigir a dashboard por defecto
-                  navigate("/dashboard", { replace: true });
-                }
-              };
-
-              // Redirigir inmediatamente si tenemos el perfil, sino esperar un poco
-              if (userProfile?.role) {
-                setTimeout(redirectWithRole, 1000);
-              } else {
-                setTimeout(redirectWithRole, 2000);
-              }
-            }
-          } catch (error) {
-            console.error("Error verificando email:", error);
-          }
-        }, 2000);
-      } catch (error) {
-        console.error("Error verificando email:", error);
-        setIsChecking(false);
-      }
-    };
-
-    checkVerification();
-
+    if (!hasCodeFlow) return undefined;
+    let cancelled = false;
+    if (!applyPromiseRef.current) applyPromiseRef.current = verifyEmailWithCode(oobCode);
+    applyPromiseRef.current
+      .then(() => refreshEmailVerification())
+      .then(() => {
+        if (cancelled) return;
+        setCodeStatus("applied");
+        navigate(location.pathname, { replace: true });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCodeError(getAuthErrorMessage(error.code));
+        setCodeStatus("failed");
+        navigate(location.pathname, { replace: true });
+      });
     return () => {
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
-      }
+      cancelled = true;
     };
-  }, [initialAuthLoading, navigate, userProfile, searchParams]);
+    // location.pathname es estable en esta ruta; oobCode identifica el flujo.
+  }, [hasCodeFlow, oobCode, navigate, location.pathname, refreshEmailVerification]);
 
-  // Cooldown timer
+  // 2) Sin sesión y sin flujo de código → no hay nada que verificar.
   useEffect(() => {
-    if (cooldownSeconds > 0 && currentUser) {
-      localStorage.setItem(`emailCooldown_${currentUser.uid}`, cooldownSeconds.toString());
-      localStorage.setItem(`emailCooldownTime_${currentUser.uid}`, Date.now().toString());
+    if (currentUser || codeStatus !== "idle" || leavingRef.current) return;
+    navigate(SIGN_IN_PATH, { replace: true });
+  }, [currentUser, codeStatus, navigate]);
 
-      cooldownIntervalRef.current = setInterval(() => {
-        setCooldownSeconds((prev) => {
-          const newValue = prev <= 1 ? 0 : prev - 1;
+  // 3) Verificado → redirige según el rol real (espera brevemente a que llegue el perfil).
+  useEffect(() => {
+    if (!verified) return undefined;
+    const timer = setTimeout(
+      () => navigate(getHomePathForRole(role), { replace: true }),
+      role ? REDIRECT_WITH_ROLE_MS : REDIRECT_NO_ROLE_MS
+    );
+    return () => clearTimeout(timer);
+  }, [verified, role, navigate]);
 
-          if (currentUser) {
-            if (newValue === 0) {
-              localStorage.removeItem(`emailCooldown_${currentUser.uid}`);
-              localStorage.removeItem(`emailCooldownTime_${currentUser.uid}`);
-            } else {
-              localStorage.setItem(`emailCooldown_${currentUser.uid}`, newValue.toString());
-            }
-          }
-
-          return newValue;
-        });
-      }, 1000);
-    } else {
-      if (cooldownIntervalRef.current) {
-        clearInterval(cooldownIntervalRef.current);
-        cooldownIntervalRef.current = null;
-      }
-
-      if (cooldownSeconds === 0 && currentUser) {
-        localStorage.removeItem(`emailCooldown_${currentUser.uid}`);
-        localStorage.removeItem(`emailCooldownTime_${currentUser.uid}`);
-      }
+  // 4) Cooldown de reenvío persistido por usuario.
+  useEffect(() => {
+    if (!uid) return;
+    const stored = readCooldown(uid);
+    if (stored) {
+      setCooldownUntil(stored);
+      setNow(Date.now());
     }
+  }, [uid]);
 
-    return () => {
-      if (cooldownIntervalRef.current) {
-        clearInterval(cooldownIntervalRef.current);
-      }
-    };
-  }, [cooldownSeconds, currentUser]);
+  useEffect(() => {
+    if (!uid || !justRegistered || sendErrorCode || initialCooldownRef.current) return;
+    // Recién registrado y el correo salió bien: evita reenviar de inmediato.
+    initialCooldownRef.current = true;
+    if (!readCooldown(uid)) startCooldown(RESEND_COOLDOWN_S);
+  }, [uid, justRegistered, sendErrorCode, startCooldown]);
 
-  const handleResendEmail = async () => {
-    if (cooldownSeconds > 0) {
-      setErrorMessage(
-        `Por favor, espera ${cooldownSeconds} segundo${
-          cooldownSeconds !== 1 ? "s" : ""
-        } antes de solicitar otro email.`
-      );
-      openErrorSB();
-      return;
-    }
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) return undefined;
+    const interval = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= cooldownUntil) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownUntil]);
 
-    setIsResending(true);
+  const secondsLeft = Math.max(0, Math.ceil((cooldownUntil - now) / 1000));
+
+  const handleResend = async () => {
+    if (resending || secondsLeft > 0) return;
+    setResending(true);
     try {
       await resendVerificationEmail();
-      setSuccessMessage("Email de verificación reenviado. Revisa tu bandeja de entrada.");
-      openSuccessSB();
-      setCooldownSeconds(60);
+      startCooldown(RESEND_COOLDOWN_S);
+      notify("success", "Te reenviamos el correo de verificación. Revisa tu bandeja de entrada.");
     } catch (error) {
-      let message = error.message || "Error al reenviar el email. Por favor, inténtalo más tarde.";
-
-      if (error.code === "auth/too-many-requests") {
-        setCooldownSeconds(300);
-        message =
-          "Has enviado demasiados emails. Por favor, espera 5 minutos antes de intentar nuevamente.";
-      } else if (error.code === "auth/unauthorized-continue-uri") {
-        message = `El dominio no está autorizado en Firebase. Por favor, agrega "${window.location.hostname}" en Firebase Console > Authentication > Settings > Authorized domains.`;
-      } else {
-        setCooldownSeconds(60);
-      }
-
-      setErrorMessage(message);
-      openErrorSB();
+      if (error.code === "auth/too-many-requests") startCooldown(TOO_MANY_COOLDOWN_S);
+      const message =
+        error.code === "auth/too-many-requests" || error.code === "auth/unauthorized-continue-uri"
+          ? error.message
+          : error.code
+          ? getAuthErrorMessage(error.code)
+          : error.message || getAuthErrorMessage();
+      notify("error", message);
     } finally {
-      setIsResending(false);
+      setResending(false);
     }
   };
 
-  const handleGoToSignIn = () => {
-    navigate("/authentication/sign-in");
+  const handleCheck = async () => {
+    if (checking) return;
+    setChecking(true);
+    try {
+      const ok = await refreshEmailVerification();
+      if (!ok) notify("info", "Aún no vemos la verificación. Abre el enlace del correo e inténtalo de nuevo.");
+    } finally {
+      setChecking(false);
+    }
   };
 
-  // Right Panel Content
-  const rightContent = (
-    <MDBox
-      width="100%"
-      height="100%"
-      sx={{
-        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url(${bgImage})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        position: "relative",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        p: 4,
-      }}
-    >
-      <MDBox sx={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-        <Mail className="mx-auto mb-4 h-20 w-20 text-white opacity-90" strokeWidth={1.5} aria-hidden />
-        <MDTypography variant="h3" fontWeight="bold" color="white" mb={2}>
-          Verifica tu Email
-        </MDTypography>
-        <MDTypography variant="body1" color="white" sx={{ opacity: 0.9, maxWidth: "300px" }}>
-          Hemos enviado un enlace de verificación a tu correo electrónico. Haz clic en el enlace
-          para completar tu registro.
-        </MDTypography>
-      </MDBox>
-    </MDBox>
+  const handleLeave = async (target) => {
+    leavingRef.current = true;
+    try {
+      await logoutUser();
+    } finally {
+      navigate(target, { replace: true });
+    }
+  };
+
+  const toastNode = (
+    <Toast
+      open={toast.open}
+      type={toast.type}
+      message={toast.message}
+      onClose={() => setToast((t) => ({ ...t, open: false }))}
+    />
   );
 
-  // Left Panel Content
-  const leftContent = (
-    <MDBox
-      width="100%"
-      height="100%"
-      display="flex"
-      flexDirection="column"
-      justifyContent="center"
-      alignItems="center"
-      px={{ xs: 3, sm: 6, md: 8 }}
-      py={4}
-      sx={{ position: "relative" }}
-    >
-      <MDBox maxWidth="480px" mx="auto" width="100%">
-        {isChecking ? (
-          <>
-            <MDBox display="flex" justifyContent="center" mb={3}>
-              <Spinner size="lg" className="border-primary" />
-            </MDBox>
-            <MDTypography variant="h4" fontWeight="bold" color="dark" mb={2} textAlign="center">
-              Verificando...
-            </MDTypography>
-            <MDTypography variant="body1" color="text" mb={3} textAlign="center">
-              Estamos verificando el estado de tu email. Por favor, espera un momento.
-            </MDTypography>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full w-2/5 animate-pulse rounded-full bg-primary" />
-            </div>
-          </>
-        ) : isVerified ? (
-          <>
-            <MDBox display="flex" justifyContent="center" mb={3}>
-              <CircleCheck className="mx-auto h-20 w-20 text-emerald-600" strokeWidth={1.5} aria-hidden />
-            </MDBox>
-            <MDTypography variant="h4" className="mb-2 text-center font-bold text-emerald-600">
-              ¡Email Verificado!
-            </MDTypography>
-            <MDTypography variant="body1" color="text" mb={4} textAlign="center">
-              Tu email ha sido verificado exitosamente. Serás redirigido en breve...
-            </MDTypography>
-          </>
+  // --- Estados de pantalla ---
+
+  if (codeStatus === "applying") {
+    return (
+      <AuthShell title="Verificando tu correo" aside={ASIDE}>
+        <div className="flex items-center gap-3 text-sm text-fg-muted" role="status">
+          <Spinner size="sm" label="Verificando" />
+          Confirmando tu enlace de verificación…
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (verified) {
+    return (
+      <AuthShell
+        title="Correo verificado"
+        subtitle="Tu cuenta está activa. Te estamos llevando a tu panel."
+        aside={ASIDE}
+      >
+        <Notice tone="success">Tu correo electrónico se verificó correctamente.</Notice>
+        <Button
+          type="button"
+          size="lg"
+          fullWidth
+          className="mt-4"
+          onClick={() => navigate(getHomePathForRole(role), { replace: true })}
+        >
+          Continuar
+        </Button>
+        {toastNode}
+      </AuthShell>
+    );
+  }
+
+  if (!currentUser) {
+    // Llegó desde el enlace del correo sin sesión abierta en este navegador.
+    return (
+      <AuthShell
+        title={codeStatus === "applied" ? "Correo verificado" : "No pudimos verificar el enlace"}
+        subtitle={
+          codeStatus === "applied"
+            ? "Tu cuenta está activa. Inicia sesión para continuar."
+            : "Inicia sesión para solicitar un nuevo correo de verificación."
+        }
+        aside={ASIDE}
+        backTo={SIGN_IN_PATH}
+        backLabel="Iniciar sesión"
+      >
+        {codeStatus === "applied" ? (
+          <Notice tone="success">Tu correo electrónico se verificó correctamente.</Notice>
         ) : (
-          <>
-            <MDBox display="flex" justifyContent="center" mb={3}>
-              <Mail className="mx-auto h-20 w-20 text-primary" strokeWidth={1.5} aria-hidden />
-            </MDBox>
-            <MDTypography variant="h4" fontWeight="bold" color="dark" mb={2} textAlign="center">
-              Verifica tu Email
-            </MDTypography>
-            <MDTypography variant="body1" color="text" mb={3} textAlign="center">
-              Hemos enviado un enlace de verificación a:
-            </MDTypography>
-            <div className="mb-3 rounded-xl border border-slate-300 bg-slate-100 p-4">
-              <MDTypography variant="body1" className="text-center font-medium text-slate-900">
-                {userEmail}
-              </MDTypography>
-            </div>
-            <MDTypography variant="body2" color="text" mb={4} textAlign="center">
-              Haz clic en el enlace del email para verificar tu cuenta. Esta página se actualizará
-              automáticamente cuando verifiques tu email.
-            </MDTypography>
-
-            <MDButton
-              variant="outlined"
-              fullWidth
-              onClick={handleResendEmail}
-              disabled={isResending || cooldownSeconds > 0}
-              className="mb-2 inline-flex w-full items-center justify-center gap-2 border-primary py-3 text-primary normal-case hover:bg-primary/10 disabled:border-slate-300 disabled:text-slate-500"
-            >
-              {isResending ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />}
-              {isResending
-                ? "Reenviando..."
-                : cooldownSeconds > 0
-                ? `Espera ${cooldownSeconds}s antes de reenviar`
-                : "Reenviar Email de Verificación"}
-            </MDButton>
-
-            <MDButton
-              variant="text"
-              fullWidth
-              onClick={handleGoToSignIn}
-              className="normal-case text-slate-600 hover:bg-transparent hover:underline"
-            >
-              Ya verifiqué mi email, ir a iniciar sesión
-            </MDButton>
-          </>
+          <Notice tone="error">{codeError || getAuthErrorMessage("auth/invalid-action-code")}</Notice>
         )}
-
-        {!isVerified && !isChecking && (
-          <div className="mt-6 rounded-xl border border-primary-200 bg-primary-50 p-4">
-            <MDTypography variant="caption" className="mb-1 block font-medium text-primary-900">
-              <strong>¿No recibiste el email?</strong>
-            </MDTypography>
-            <MDTypography variant="caption" className="text-primary-900/90">
-              • Revisa tu carpeta de spam o correo no deseado
-              <br />• Asegúrate de que el email sea correcto
-              <br />• Espera unos minutos y haz clic en &quot;Reenviar Email de Verificación&quot;
-            </MDTypography>
-          </div>
-        )}
-      </MDBox>
-
-      <MDSnackbar
-        color="error"
-        icon="warning"
-        title="Error"
-        content={errorMessage}
-        dateTime="justo ahora"
-        open={errorSB}
-        onClose={closeErrorSB}
-        close={closeErrorSB}
-        bgWhite
-      />
-      <MDSnackbar
-        color="success"
-        icon="check"
-        title="Éxito"
-        content={successMessage}
-        dateTime="justo ahora"
-        open={successSB}
-        onClose={closeSuccessSB}
-        close={closeSuccessSB}
-        bgWhite
-      />
-    </MDBox>
-  );
+        <ButtonLink to={SIGN_IN_PATH} size="lg" fullWidth className="mt-4">
+          Iniciar sesión
+        </ButtonLink>
+      </AuthShell>
+    );
+  }
 
   return (
-    <SplitScreenLayout
-      leftContent={leftContent}
-      rightContent={rightContent}
-      leftWidth="60%"
-      rightWidth="40%"
-      showLeftOnMobile={true}
-    />
+    <AuthShell
+      title="Verifica tu correo"
+      subtitle="Te enviamos un enlace de verificación. Ábrelo para activar tu cuenta."
+      aside={ASIDE}
+    >
+      <div className="flex items-center gap-3 rounded-md border border-line bg-zinc-50 px-3 py-2.5">
+        <Mail className="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden="true" />
+        <span className="min-w-0 break-all text-sm font-medium text-fg">{currentUser.email}</span>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {codeStatus === "failed" && <Notice tone="error">{codeError}</Notice>}
+        {justRegistered && sendErrorCode && <Notice tone="warning">{sendErrorMessage(sendErrorCode)}</Notice>}
+      </div>
+
+      <p className="mt-4 text-[13px] leading-5 text-fg-muted">
+        Esta página se actualiza automáticamente cuando verifiques tu correo.
+      </p>
+
+      <div className="mt-5 space-y-2">
+        <Button type="button" size="lg" fullWidth loading={checking} onClick={handleCheck}>
+          Ya verifiqué mi correo
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="lg"
+          fullWidth
+          loading={resending}
+          disabled={secondsLeft > 0}
+          leftIcon={resending ? undefined : <RefreshCw className="h-4 w-4" aria-hidden="true" />}
+          onClick={handleResend}
+        >
+          {secondsLeft > 0 ? `Reenviar en ${secondsLeft} s` : "Reenviar correo"}
+        </Button>
+      </div>
+
+      <div className="mt-6 rounded-md border border-line p-3">
+        <p className="text-[13px] font-medium text-fg-strong">¿No recibiste el correo?</p>
+        <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[13px] leading-5 text-fg-muted">
+          <li>Revisa la carpeta de spam o correo no deseado.</li>
+          <li>Comprueba que la dirección de arriba sea correcta.</li>
+          <li>Espera unos minutos y vuelve a solicitar el envío.</li>
+        </ul>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-1 gap-y-1">
+        <Button type="button" variant="ghost" size="sm" onClick={() => handleLeave(SIGN_UP_PATH)}>
+          Usar otro correo
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => handleLeave(SIGN_IN_PATH)}>
+          Cerrar sesión
+        </Button>
+      </div>
+
+      {toastNode}
+    </AuthShell>
   );
 }
 

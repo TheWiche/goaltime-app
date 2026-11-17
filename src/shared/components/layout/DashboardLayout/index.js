@@ -3,9 +3,9 @@ import { useLocation } from "react-router-dom";
 import PropTypes from "prop-types";
 import { useMaterialUIController, setLayout } from "shared/context";
 
+/** Marco de las páginas autenticadas: deja sitio al Sidenav fijo (240px en xl). */
 function DashboardLayout({ children }) {
-  const [controller, dispatch] = useMaterialUIController();
-  const { miniSidenav } = controller;
+  const [, dispatch] = useMaterialUIController();
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -13,22 +13,8 @@ function DashboardLayout({ children }) {
   }, [pathname, dispatch]);
 
   return (
-    <div
-      className={[
-        "relative min-h-screen bg-surface",
-        "transition-[margin] duration-300 ease-in-out",
-        miniSidenav ? "xl:ml-[96px]" : "xl:ml-[280px]",
-      ].join(" ")}
-    >
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 -z-10"
-        style={{
-          backgroundImage:
-            "radial-gradient(1200px 600px at 0% 0%, rgba(30,58,138,0.06), transparent 60%), radial-gradient(900px 500px at 100% 100%, rgba(249,115,22,0.05), transparent 60%)",
-        }}
-      />
-      <div className="relative px-4 sm:px-6 lg:px-8 py-6 lg:py-8">{children}</div>
+    <div className="min-h-dvh bg-canvas xl:ml-60">
+      <div className="px-4 pb-8 sm:px-6 lg:px-8">{children}</div>
     </div>
   );
 }

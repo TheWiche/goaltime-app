@@ -1,137 +1,203 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
+import { AlertTriangle, CalendarCheck2, CalendarX } from "lucide-react";
 import {
-  CalendarCheck2,
-  Clock,
-  CircleCheck,
-  Info,
-  Calendar,
-  Banknote,
-  MapPin,
-  Zap,
-} from "lucide-react";
-import Spinner from "shared/components/ui/Spinner";
-import { Modal, Button, TextField, SelectField, SectionCard } from "shared/components/ui";
-import { getAvailableTimeSlots } from "shared/services/firebaseService";
+  Button,
+  EmptyState,
+  Modal,
+  Select,
+  Skeleton,
+  TextField,
+  Textarea,
+  cx,
+  focusRing,
+} from "shared/components/ui";
+import { getAvailableTimeSlots, MAX_RESERVATION_HOURS } from "shared/services/firebaseService";
+import {
+  addDaysISO,
+  addHoursToTime,
+  compareISODate,
+  formatDateEs,
+  isValidISODate,
+  isValidTime,
+  minutesFromTime,
+  tomorrowLocalISO,
+} from "shared/utils/date";
+import { formatCurrency } from "shared/utils/format";
 
-const DURATION_OPTIONS = [
-  { value: "1", label: "1 hora" },
-  { value: "2", label: "2 horas" },
-  { value: "3", label: "3 horas" },
-  { value: "4", label: "4 horas" },
-  { value: "5", label: "5 horas" },
-  { value: "6", label: "6 horas" },
+const MAX_DAYS_AHEAD = 90;
+
+const DURATION_OPTIONS = Array.from({ length: MAX_RESERVATION_HOURS || 6 }, (_, i) => ({
+  value: String(i + 1),
+  label: i === 0 ? "1 hora" : `${i + 1} horas`,
+}));
+
+const DAY_PARTS = [
+  { key: "morning", label: "Mañana", test: (m) => m < 12 * 60 },
+  { key: "afternoon", label: "Tarde", test: (m) => m >= 12 * 60 && m < 18 * 60 },
+  { key: "night", label: "Noche", test: (m) => m >= 18 * 60 },
 ];
 
-function getTomorrowISO() {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toISOString().split("T")[0];
+const INITIAL_SLOTS = { status: "idle", times: [], error: "" };
+
+function SlotsSkeleton() {
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4" aria-hidden="true">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-9" />
+      ))}
+    </div>
+  );
 }
 
-function ReservationModal({ open, onClose, onSubmit, loading, field }) {
-  const [selectedDate, setSelectedDate] = useState("");
-  const [selectedTime, setSelectedTime] = useState("");
+function ReservationModal({ open, onClose, onSubmit, loading = false, field = null }) {
+  const [date, setDate] = useState(tomorrowLocalISO);
   const [duration, setDuration] = useState("1");
-  const [availableTimes, setAvailableTimes] = useState([]);
-  const [loadingTimes, setLoadingTimes] = useState(false);
+  const [startTime, setStartTime] = useState("");
+  const [notes, setNotes] = useState("");
+  const [slots, setSlots] = useState(INITIAL_SLOTS);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [formError, setFormError] = useState("");
 
+  const fieldId = field?.id;
+  const openingTime = field?.openingTime;
+  const closingTime = field?.closingTime;
+  const durationHours = Number(duration);
+  const minDate = tomorrowLocalISO();
+  const maxDate = addDaysISO(minDate, MAX_DAYS_AHEAD);
+
+  const hoursValid =
+    isValidTime(openingTime) &&
+    isValidTime(closingTime) &&
+    minutesFromTime(openingTime) < minutesFromTime(closingTime);
+
+  // Reinicia el formulario al abrir (o al cambiar de cancha).
   useEffect(() => {
-    if (!open) {
-      setSelectedDate(getTomorrowISO());
-      setSelectedTime("");
-      setDuration("1");
-      setAvailableTimes([]);
-    } else if (open && !selectedDate) {
-      setSelectedDate(getTomorrowISO());
+    if (!open) return;
+    setDate(tomorrowLocalISO());
+    setDuration("1");
+    setStartTime("");
+    setNotes("");
+    setFormError("");
+    setSlots(INITIAL_SLOTS);
+  }, [open, fieldId]);
+
+  // Carga de horarios disponibles. Ignora respuestas tardías (flag `cancelled`).
+  useEffect(() => {
+    if (!open || !fieldId) return undefined;
+    if (!hoursValid) {
+      setSlots({ status: "error", times: [], error: "La cancha no tiene un horario válido configurado." });
+      return undefined;
     }
-  }, [open, selectedDate]);
+    if (!isValidISODate(date) || compareISODate(date, minDate) < 0) {
+      setSlots({ status: "error", times: [], error: "Selecciona una fecha a partir de mañana." });
+      return undefined;
+    }
 
-  useEffect(() => {
-    const loadAvailableTimes = async () => {
-      if (!open || !field || !selectedDate || !field.openingTime || !field.closingTime) {
-        setAvailableTimes([]);
-        return;
-      }
-      setLoadingTimes(true);
-      try {
-        const times = await getAvailableTimeSlots(
-          field.id,
-          selectedDate,
-          field.openingTime,
-          field.closingTime
-        );
-        setAvailableTimes(times);
-        if (selectedTime && !times.includes(selectedTime)) setSelectedTime("");
-      } catch (error) {
-        console.error("Error al cargar horas disponibles:", error);
-        setAvailableTimes([]);
-      } finally {
-        setLoadingTimes(false);
-      }
+    let cancelled = false;
+    setSlots({ status: "loading", times: [], error: "" });
+    getAvailableTimeSlots(fieldId, date, openingTime, closingTime, durationHours)
+      .then((times) => {
+        if (cancelled) return;
+        const close = minutesFromTime(closingTime);
+        // Defensa adicional: el fin (inicio + duración) no puede pasar del cierre.
+        const valid = (Array.isArray(times) ? times : []).filter((t) => {
+          const end = addHoursToTime(t, durationHours);
+          return end !== null && minutesFromTime(end) <= close;
+        });
+        setSlots({ status: "ready", times: valid, error: "" });
+        setStartTime((prev) => (valid.includes(prev) ? prev : ""));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSlots({
+          status: "error",
+          times: [],
+          error: error?.message || "No se pudo consultar la disponibilidad.",
+        });
+        setStartTime("");
+      });
+    return () => {
+      cancelled = true;
     };
-    loadAvailableTimes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, field, selectedDate]);
+  }, [open, fieldId, date, durationHours, openingTime, closingTime, hoursValid, minDate, reloadKey]);
 
-  const totalPrice = useMemo(
-    () => (field ? field.pricePerHour * parseInt(duration, 10) : 0),
-    [field, duration]
+  const endTime = startTime ? addHoursToTime(startTime, durationHours) : null;
+
+  const pricePerHour = useMemo(() => {
+    const n = Number(field?.pricePerHour);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }, [field?.pricePerHour]);
+  const totalPrice = Math.round(pricePerHour * (Number.isFinite(durationHours) ? durationHours : 0));
+
+  const groupedSlots = useMemo(
+    () =>
+      DAY_PARTS.map((part) => ({
+        ...part,
+        times: slots.times.filter((t) => part.test(minutesFromTime(t))),
+      })).filter((g) => g.times.length > 0),
+    [slots.times]
   );
 
-  const endTime = useMemo(() => {
-    if (!selectedTime) return null;
-    const [hours, minutes] = selectedTime.split(":").map(Number);
-    const start = new Date();
-    start.setHours(hours, minutes, 0);
-    start.setHours(start.getHours() + parseInt(duration, 10));
-    return `${start.getHours().toString().padStart(2, "0")}:${start
-      .getMinutes()
-      .toString()
-      .padStart(2, "0")}`;
-  }, [selectedTime, duration]);
+  if (!field) return null;
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (loading || !selectedDate || !selectedTime || !field) return;
+    if (loading) return;
+    if (!startTime) {
+      setFormError("Selecciona una hora de inicio.");
+      return;
+    }
+    if (!endTime || minutesFromTime(endTime) > minutesFromTime(closingTime)) {
+      setFormError(`La reserva debe terminar antes del cierre (${closingTime}).`);
+      return;
+    }
+    setFormError("");
     onSubmit({
       fieldId: field.id,
       fieldName: field.name,
-      date: selectedDate,
-      startTime: selectedTime,
+      date,
+      startTime,
       endTime,
-      duration: parseInt(duration, 10),
-      totalPrice,
+      duration: durationHours,
+      notes: notes.trim() || undefined,
     });
   };
 
-  if (!field) return null;
+  const summary = [
+    ["Fecha", formatDateEs(date, { weekday: "long", day: "numeric", month: "long" }, "—")],
+    ["Horario", startTime && endTime ? `${startTime} – ${endTime}` : "Sin seleccionar"],
+    ["Duración", DURATION_OPTIONS.find((o) => o.value === duration)?.label || "—"],
+    ["Tarifa", pricePerHour ? `${formatCurrency(pricePerHour)} / h` : "—"],
+  ];
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
-      size="2xl"
-      variant="hero"
-      eyebrow="Reservar cancha"
-      title={field.name}
+      onClose={loading ? undefined : onClose}
+      size="xl"
+      title={`Reservar ${field.name || "cancha"}`}
       subtitle={field.address}
-      icon={<CalendarCheck2 className="h-6 w-6 shrink-0" strokeWidth={2} aria-hidden />}
-      bodyClassName="bg-slate-50 px-0 py-0"
+      icon={<CalendarCheck2 className="h-4 w-4" aria-hidden />}
+      footerSticky
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
+          {formError && (
+            <p className="text-xs text-red-600 sm:mr-auto" role="alert">
+              {formError}
+            </p>
+          )}
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
             Cancelar
           </Button>
           <Button
             type="submit"
             form="reservation-form"
-            variant="primary"
+            variant="cta"
             loading={loading}
-            disabled={loading || !selectedTime}
+            disabled={!startTime || slots.status !== "ready"}
           >
-            <CircleCheck className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
-            Confirmar reserva · ${totalPrice.toFixed(2)}
+            Reservar · <span className="tabular">{formatCurrency(totalPrice)}</span>
           </Button>
         </>
       }
@@ -139,171 +205,149 @@ function ReservationModal({ open, onClose, onSubmit, loading, field }) {
       <form
         id="reservation-form"
         onSubmit={handleSubmit}
-        className="px-6 sm:px-8 py-7 grid grid-cols-1 lg:grid-cols-12 gap-6"
+        noValidate
+        className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px]"
       >
-        <div className="lg:col-span-8 space-y-5">
-          <SectionCard
-            eyebrow="Paso 1"
-            title="Fecha y duración"
-            icon={<Calendar className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <TextField
-                id="reservation-date"
-                label="Fecha de reserva"
-                type="date"
-                required
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                min={getTomorrowISO()}
-                hint="Solo a partir de mañana."
-              />
-              <SelectField
-                id="reservation-duration"
-                label="Duración"
-                required
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                options={DURATION_OPTIONS}
-              />
-            </div>
-          </SectionCard>
+        <div className="space-y-6">
+          <section className="grid gap-4 sm:grid-cols-2">
+            <TextField
+              id="reservation-date"
+              label="Fecha"
+              type="date"
+              required
+              value={date}
+              min={minDate}
+              max={maxDate}
+              onChange={(e) => {
+                setDate(e.target.value);
+                setFormError("");
+              }}
+              hint="A partir de mañana."
+              disabled={loading}
+            />
+            <Select
+              id="reservation-duration"
+              label="Duración"
+              required
+              value={duration}
+              onChange={(e) => {
+                setDuration(e.target.value);
+                setFormError("");
+              }}
+              options={DURATION_OPTIONS}
+              disabled={loading}
+            />
+          </section>
 
-          <SectionCard
-            eyebrow="Paso 2"
-            title="Hora de inicio"
-            subtitle={
-              loadingTimes
-                ? "Cargando horarios disponibles..."
-                : `${availableTimes.length} hora(s) disponible(s) para esta fecha.`
-            }
-            icon={<Clock className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
-          >
-            {loadingTimes ? (
-              <div className="flex items-center justify-center py-10 text-slate-500 gap-3">
-                <Spinner size="sm" />
-                <span className="text-sm">Cargando horas disponibles…</span>
-              </div>
-            ) : availableTimes.length === 0 ? (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-4 flex items-start gap-3">
-                <Info className="h-[22px] w-[22px] shrink-0 text-rose-700" strokeWidth={2} aria-hidden />
-                <div>
-                  <p className="text-sm font-semibold text-rose-900">
-                    Sin horarios disponibles
-                  </p>
-                  <p className="text-xs text-rose-800 mt-0.5">
-                    Selecciona otra fecha para ver opciones.
-                  </p>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <p id="reservation-slots-label" className="text-[13px] font-medium leading-5 text-fg">
+                Hora de inicio
+              </p>
+              {hoursValid && (
+                <span className="tabular text-xs text-fg-subtle">
+                  Abierto {openingTime} – {closingTime}
+                </span>
+              )}
+            </div>
+            <div role="group" aria-labelledby="reservation-slots-label" aria-busy={slots.status === "loading"}>
+              {slots.status === "loading" || slots.status === "idle" ? (
+                <SlotsSkeleton />
+              ) : slots.status === "error" ? (
+                <EmptyState
+                  size="sm"
+                  icon={AlertTriangle}
+                  title="No pudimos cargar los horarios"
+                  description={slots.error}
+                  action={
+                    hoursValid ? (
+                      <Button type="button" size="sm" variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>
+                        Reintentar
+                      </Button>
+                    ) : null
+                  }
+                />
+              ) : slots.times.length === 0 ? (
+                <EmptyState
+                  size="sm"
+                  icon={CalendarX}
+                  title="Sin horarios disponibles"
+                  description="Prueba con otra fecha o una duración más corta."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {groupedSlots.map((group) => (
+                    <div key={group.key}>
+                      <p className="mb-1.5 text-xs font-medium text-fg-subtle">{group.label}</p>
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+                        {group.times.map((time) => {
+                          const active = startTime === time;
+                          return (
+                            <button
+                              key={time}
+                              type="button"
+                              aria-pressed={active}
+                              disabled={loading}
+                              onClick={() => {
+                                setStartTime(time);
+                                setFormError("");
+                              }}
+                              className={cx(
+                                "tabular h-9 rounded-md border text-sm font-medium transition-colors duration-150",
+                                "disabled:cursor-not-allowed disabled:opacity-50",
+                                focusRing,
+                                active
+                                  ? "border-primary-600 bg-primary-600 text-white"
+                                  : "border-line-strong bg-white text-fg hover:border-zinc-400 hover:bg-zinc-50"
+                              )}
+                            >
+                              {time}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto pr-1 -mr-1">
-                {availableTimes.map((time) => {
-                  const active = selectedTime === time;
-                  return (
-                    <button
-                      key={time}
-                      type="button"
-                      onClick={() => setSelectedTime(time)}
-                      className={[
-                        "relative flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all duration-200 cursor-pointer",
-                        "focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
-                        active
-                          ? "bg-primary text-white border-primary shadow-md"
-                          : "bg-white text-slate-700 border-slate-200 hover:border-primary/50 hover:text-primary hover:bg-primary-50/40",
-                      ].join(" ")}
-                    >
-                      <Clock
-                        className={active ? "h-3.5 w-3.5 opacity-90" : "h-3.5 w-3.5 opacity-60"}
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                      {time}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </SectionCard>
+              )}
+            </div>
+          </div>
+
+          <Textarea
+            id="reservation-notes"
+            label="Notas para el dueño"
+            optional
+            rows={2}
+            maxLength={500}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Ej. Necesitamos balón y petos."
+            disabled={loading}
+          />
         </div>
 
-        <aside className="lg:col-span-4 space-y-5">
-          <SectionCard
-            eyebrow="Resumen"
-            title="Tu reserva"
-            icon={<Zap className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />}
-          >
-            <SummaryRow
-              icon={<MapPin className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
-              label="Cancha"
-              value={field.name}
-            />
-            <SummaryRow
-              icon={<Calendar className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
-              label="Fecha"
-              value={
-                selectedDate
-                  ? new Date(`${selectedDate}T00:00:00`).toLocaleDateString("es-ES", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                    })
-                  : "—"
-              }
-            />
-            <SummaryRow
-              icon={<Clock className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
-              label="Horario"
-              value={selectedTime ? `${selectedTime} – ${endTime}` : "Sin selección"}
-            />
-            <SummaryRow
-              icon={<Clock className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
-              label="Duración"
-              value={`${duration} hora(s)`}
-            />
-            <SummaryRow
-              icon={<Banknote className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />}
-              label="Tarifa"
-              value={`$${field.pricePerHour}/h`}
-            />
-
-            <div className="mt-4 rounded-xl bg-gradient-to-br from-primary-900 via-primary to-secondary text-white p-4">
-              <p className="text-[11px] uppercase tracking-wider text-white/70 font-semibold">
-                Total a pagar
-              </p>
-              <p className="text-3xl font-bold font-heading mt-0.5">
-                ${totalPrice.toFixed(2)}
-              </p>
-              <p className="text-xs text-white/70 mt-1">
-                Pago presencial al llegar a la cancha.
-              </p>
-            </div>
-          </SectionCard>
+        <aside className="h-fit rounded-lg border border-line">
+          <h3 className="border-b border-line px-4 py-3 text-sm font-semibold text-fg-strong">Resumen</h3>
+          <dl className="space-y-2 px-4 py-3 text-[13px]">
+            {summary.map(([label, value]) => (
+              <div key={label} className="flex items-start justify-between gap-3">
+                <dt className="text-fg-muted">{label}</dt>
+                <dd className="tabular text-right font-medium text-fg first-letter:uppercase">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="border-t border-line bg-zinc-50 px-4 py-3">
+            <p className="text-xs text-fg-muted">Total</p>
+            <p className="tabular text-2xl font-semibold tracking-tight text-fg-strong">
+              {formatCurrency(totalPrice)}
+            </p>
+            <p className="mt-1 text-xs text-fg-subtle">Pago presencial en la cancha.</p>
+          </div>
         </aside>
       </form>
     </Modal>
   );
 }
-
-function SummaryRow({ icon, label, value }) {
-  return (
-    <div className="flex items-start justify-between py-2 border-b border-slate-100 last:border-0">
-      <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
-        {icon}
-        {label}
-      </span>
-      <span className="text-sm font-medium text-slate-900 text-right ml-2 truncate max-w-[55%]">
-        {value}
-      </span>
-    </div>
-  );
-}
-
-SummaryRow.propTypes = {
-  icon: PropTypes.node.isRequired,
-  label: PropTypes.string.isRequired,
-  value: PropTypes.node.isRequired,
-};
 
 ReservationModal.propTypes = {
   open: PropTypes.bool.isRequired,
@@ -312,7 +356,5 @@ ReservationModal.propTypes = {
   loading: PropTypes.bool,
   field: PropTypes.object,
 };
-
-ReservationModal.defaultProps = { loading: false, field: null };
 
 export default ReservationModal;

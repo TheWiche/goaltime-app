@@ -11,8 +11,8 @@ EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O 
 function License() {
   return (
     <LegalPage title="Licencia de Uso">
-      <h2 className="font-bold text-dark text-xl mb-4">Licencia de Uso (MIT)</h2>
-      <pre className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed font-sans">
+      <h2 className="text-base font-semibold text-fg-strong">Licencia de uso (MIT)</h2>
+      <pre className="mt-3 whitespace-pre-wrap rounded-md border border-line bg-zinc-50 p-4 font-sans text-[13px] leading-6 text-fg-muted">
         {mitLicenseText}
       </pre>
     </LegalPage>

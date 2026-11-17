@@ -9,7 +9,7 @@ import { controlBase, controlError } from "shared/components/ui/cx";
  * con aria-describedby. `labelAside` permite un enlace a la derecha del label ("¿Olvidaste…?").
  */
 const PasswordField = forwardRef(function PasswordField(
-  { id, label, hint, error, labelAside, visible, onToggleVisible, className = "", ...rest },
+  { id, label, hint, error, required, labelAside, visible, onToggleVisible, className = "", ...rest },
   ref
 ) {
   const auto = useId();
@@ -26,6 +26,11 @@ const PasswordField = forwardRef(function PasswordField(
       <div className="flex items-center justify-between gap-2">
         <label htmlFor={fieldId} className="text-[13px] font-medium leading-5 text-fg">
           {label}
+          {required && (
+            <span className="ml-0.5 text-red-600" aria-hidden="true">
+              *
+            </span>
+          )}
         </label>
         {labelAside}
       </div>
@@ -34,6 +39,7 @@ const PasswordField = forwardRef(function PasswordField(
           ref={ref}
           id={fieldId}
           type={show ? "text" : "password"}
+          required={required}
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={error ? errorId : hint ? hintId : undefined}
           className={cx(controlBase, "h-10 px-3.5 pr-11", error && controlError)}
@@ -66,6 +72,7 @@ PasswordField.propTypes = {
   label: PropTypes.node.isRequired,
   hint: PropTypes.node,
   error: PropTypes.node,
+  required: PropTypes.bool,
   labelAside: PropTypes.node,
   visible: PropTypes.bool,
   onToggleVisible: PropTypes.func,

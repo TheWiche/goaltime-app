@@ -1,34 +1,27 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { AlertTriangle, Building2, Plus, Search } from "lucide-react";
+import { DashboardLayout, DashboardNavbar, Footer } from "shared/components/layout";
 import {
-  DashboardLayout,
-  DashboardNavbar,
-  Footer,
-} from "shared/components/layout";
-import {
+  Button,
+  EmptyState,
   PageHeader,
   SectionCard,
-  Button,
-  StatusPill,
+  SegmentedControl,
+  Skeleton,
+  TextField,
   Toast,
 } from "shared/components/ui";
-import {
-  Plus,
-  Search,
-  Pencil,
-  CircleCheck,
-  X,
-  Trophy,
-  Banknote,
-  MapPin,
-} from "lucide-react";
-import { db, createField, updateField, toggleFieldStatus } from "shared/services/firebaseService";
+import { createField, db, toggleFieldStatus, updateField } from "shared/services/firebaseService";
 import { useAuth } from "shared/context/AuthContext";
 import useDebounce from "shared/hooks/useDebounce";
-import AddFieldModal from "./components/AddFieldModal";
-import EditFieldModal from "./components/EditFieldModal";
-import ConfirmationDialog from "features/users/pages/admin-users/components/ConfirmationDialog";
+import useLoadMore from "features/fields/hooks/useLoadMore";
+import FieldFormModal from "features/fields/components/FieldFormModal";
+import ConfirmDialog from "features/fields/components/ConfirmDialog";
+import LoadMoreFooter from "features/fields/components/LoadMoreFooter";
+import { matchesFieldSearch } from "features/fields/utils/fieldSearch";
+import FieldsTable from "./components/FieldsTable";
 
 const FILTERS = [
   { value: "all", label: "Todas" },
@@ -38,364 +31,278 @@ const FILTERS = [
   { value: "disabled", label: "Deshabilitadas" },
 ];
 
-const STATUS_LABEL = {
-  approved: { label: "Aprobada", tone: "success" },
-  pending: { label: "Pendiente", tone: "warning" },
-  rejected: { label: "Rechazada", tone: "danger" },
-  disabled: { label: "Deshabilitada", tone: "neutral" },
-};
+function TableSkeleton() {
+  return (
+    <div className="divide-y divide-line-subtle" aria-hidden="true">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3">
+          <Skeleton className="h-9 w-12" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3 w-40" />
+            <Skeleton className="h-3 w-64 max-w-full" />
+          </div>
+          <Skeleton className="hidden h-5 w-20 sm:block" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function AssociateFields() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userProfile } = useAuth();
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const debouncedSearch = useDebounce(searchTerm, 300);
+  const { currentUser } = useAuth();
+  const uid = currentUser?.uid;
 
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 250);
+  const [statusFilter, setStatusFilter] = useState("all");
 
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [fieldToEdit, setFieldToEdit] = useState(null);
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [formState, setFormState] = useState(null); // { mode: "create" } | { mode: "edit", field }
+  const [saving, setSaving] = useState(false);
   const [fieldToToggle, setFieldToToggle] = useState(null);
-  const [confirmActionText, setConfirmActionText] = useState("");
-  const [loadingAction, setLoadingAction] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const [toast, setToast] = useState({ open: false, type: "info", message: "" });
+  const processedAddRef = useRef(false);
 
-  const hasProcessedAddParam = useRef(false);
+  const showToast = (message, type = "info") => setToast({ open: true, type, message });
 
+  // Una sola suscripción (todas mis canchas); el filtro por estado es en memoria → contadores.
   useEffect(() => {
-    if (!userProfile) return undefined;
+    if (!uid) return undefined;
     setLoading(true);
-    const q =
-      statusFilter === "all"
-        ? query(collection(db, "canchas"), where("ownerId", "==", userProfile.uid))
-        : query(
-            collection(db, "canchas"),
-            where("ownerId", "==", userProfile.uid),
-            where("status", "==", statusFilter)
-          );
-    const unsub = onSnapshot(
-      q,
+    setLoadError("");
+    const unsubscribe = onSnapshot(
+      query(collection(db, "canchas"), where("ownerId", "==", uid)),
       (snap) => {
-        const data = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setFields(data);
+        setFields(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+        );
         setLoading(false);
       },
-      () => {
+      (error) => {
         setFields([]);
         setLoading(false);
-        setToast({ open: true, type: "error", message: "Error al cargar canchas." });
+        setLoadError(error?.message || "No se pudieron cargar tus canchas.");
       }
     );
-    return () => unsub();
-  }, [userProfile, statusFilter]);
+    return () => unsubscribe();
+  }, [uid]);
 
-  const filtered = useMemo(() => {
-    if (!debouncedSearch) return fields;
-    const q = debouncedSearch.toLowerCase();
-    return fields.filter(
-      (f) =>
-        f.name?.toLowerCase().includes(q) || f.address?.toLowerCase().includes(q)
-    );
-  }, [fields, debouncedSearch]);
-
+  // ?add=true abre el alta (accesos directos del dashboard).
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const shouldAdd = params.get("add") === "true";
-    if (shouldAdd && !isAddModalOpen && !hasProcessedAddParam.current) {
-      hasProcessedAddParam.current = true;
-      setIsAddModalOpen(true);
-      navigate("/associate/fields", { replace: true });
+    const shouldAdd = new URLSearchParams(location.search).get("add") === "true";
+    if (!shouldAdd) {
+      processedAddRef.current = false;
+      return;
     }
-    if (!shouldAdd) hasProcessedAddParam.current = false;
-  }, [location.search, isAddModalOpen, navigate]);
+    if (processedAddRef.current) return;
+    processedAddRef.current = true;
+    setFormState({ mode: "create" });
+    navigate(location.pathname, { replace: true });
+  }, [location.search, location.pathname, navigate]);
 
-  const handleCloseAddModal = () => {
-    setIsAddModalOpen(false);
-    if (location.search.includes("add=true")) {
-      navigate("/associate/fields", { replace: true });
-    }
-  };
+  const counts = useMemo(() => {
+    const c = { all: fields.length, approved: 0, pending: 0, rejected: 0, disabled: 0 };
+    fields.forEach((f) => {
+      if (c[f.status] !== undefined) c[f.status] += 1;
+    });
+    return c;
+  }, [fields]);
 
-  const handleCreateField = async (fieldData) => {
-    setLoadingAction(true);
+  const filtered = useMemo(
+    () =>
+      fields.filter(
+        (f) => (statusFilter === "all" || f.status === statusFilter) && matchesFieldSearch(f, debouncedSearch)
+      ),
+    [fields, statusFilter, debouncedSearch]
+  );
+
+  const pager = useLoadMore(filtered, { resetKey: `${statusFilter}|${debouncedSearch}` });
+
+  const handleSubmit = async (...args) => {
+    setSaving(true);
     try {
-      await createField(fieldData);
-      handleCloseAddModal();
-      setToast({ open: true, type: "success", message: "Cancha creada exitosamente." });
+      if (formState?.mode === "create") {
+        await createField(args[0]);
+        showToast("Cancha registrada. Quedó pendiente de aprobación.", "success");
+      } else {
+        const [fieldId, data] = args;
+        const updated = await updateField(fieldId, data);
+        showToast(
+          updated?.status === "pending" && formState?.field?.status !== "pending"
+            ? "Cambios guardados. La cancha volvió a revisión."
+            : "Cambios guardados.",
+          "success"
+        );
+      }
+      setFormState(null);
     } catch (error) {
-      setToast({ open: true, type: "error", message: error.message });
+      showToast(error.message || "No se pudo guardar la cancha.", "error");
     } finally {
-      setLoadingAction(false);
+      setSaving(false);
     }
   };
 
-  const handleUpdateField = async (fieldId, fieldData) => {
-    setLoadingAction(true);
-    try {
-      await updateField(fieldId, fieldData);
-      setIsEditModalOpen(false);
-      setFieldToEdit(null);
-      setToast({ open: true, type: "success", message: "Cancha actualizada." });
-    } catch (error) {
-      setToast({ open: true, type: "error", message: error.message });
-    } finally {
-      setLoadingAction(false);
-    }
-  };
-
-  const handleToggleDisable = (field) => {
-    const actionText = field.status === "disabled" ? "habilitar" : "deshabilitar";
-    setFieldToToggle(field);
-    setConfirmActionText(actionText);
-    setIsConfirmOpen(true);
-  };
-
-  const confirmToggleDisable = async () => {
-    if (!fieldToToggle) return;
-    setIsConfirmOpen(false);
-    setLoadingAction(true);
+  const confirmToggle = async () => {
+    if (!fieldToToggle || toggling) return;
+    setToggling(true);
     try {
       const result = await toggleFieldStatus(fieldToToggle.id);
-      setToast({ open: true, type: "success", message: result.message });
+      showToast(
+        result?.message || (fieldToToggle.status === "disabled" ? "Cancha habilitada." : "Cancha deshabilitada."),
+        "success"
+      );
       setFieldToToggle(null);
     } catch (error) {
-      setToast({ open: true, type: "error", message: error.message });
+      showToast(error.message || "No se pudo cambiar el estado.", "error");
     } finally {
-      setLoadingAction(false);
+      setToggling(false);
     }
   };
+
+  const enabling = fieldToToggle?.status === "disabled";
+  const hasFilters = Boolean(search) || statusFilter !== "all";
+
+  let body;
+  if (loading) body = <TableSkeleton />;
+  else if (loadError) {
+    body = (
+      <EmptyState
+        bordered={false}
+        icon={AlertTriangle}
+        title="No pudimos cargar tus canchas"
+        description={loadError}
+      />
+    );
+  } else if (fields.length === 0) {
+    body = (
+      <EmptyState
+        bordered={false}
+        icon={Building2}
+        title="Aún no has registrado canchas"
+        description="Registra tu primera cancha; un administrador la revisará antes de publicarla."
+        action={
+          <Button size="sm" type="button" leftIcon={<Plus className="h-3.5 w-3.5" />} onClick={() => setFormState({ mode: "create" })}>
+            Registrar cancha
+          </Button>
+        }
+      />
+    );
+  } else if (filtered.length === 0) {
+    body = (
+      <EmptyState
+        bordered={false}
+        size="sm"
+        icon={Search}
+        title="Sin resultados"
+        description="Ninguna cancha coincide con los filtros."
+        action={
+          hasFilters ? (
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("all");
+              }}
+            >
+              Limpiar filtros
+            </Button>
+          ) : null
+        }
+      />
+    );
+  } else {
+    body = (
+      <FieldsTable
+        fields={pager.visibleItems}
+        busy={toggling}
+        onEdit={(field) => setFormState({ mode: "edit", field })}
+        onToggle={setFieldToToggle}
+        onView={(field) => navigate(`/canchas?fieldId=${encodeURIComponent(field.id)}`)}
+      />
+    );
+  }
 
   return (
     <DashboardLayout>
       <DashboardNavbar />
 
       <PageHeader
-        eyebrow="Asociado · Mis canchas"
         title="Mis canchas"
-        subtitle="Administra tu catálogo, edita información y habilita o deshabilita canchas."
+        subtitle="Registra, edita y habilita o deshabilita tus canchas."
         actions={
-          <Button variant="primary" size="md" onClick={() => setIsAddModalOpen(true)}>
-            <Plus className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+          <Button type="button" leftIcon={<Plus className="h-4 w-4" />} onClick={() => setFormState({ mode: "create" })}>
             Registrar cancha
           </Button>
         }
       />
 
       <SectionCard padding="p-0">
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center gap-3">
-          <div className="relative flex-1">
-            <Search
-              className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
-              strokeWidth={2}
-              aria-hidden
+        <div className="flex flex-col gap-2 border-b border-line p-3 md:flex-row md:items-center">
+          <TextField
+            size="sm"
+            type="search"
+            leftIcon={<Search />}
+            placeholder="Buscar por nombre o dirección"
+            aria-label="Buscar canchas"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="md:w-64"
+          />
+          <div className="-mx-1 overflow-x-auto px-1">
+            <SegmentedControl
+              aria-label="Filtrar por estado"
+              size="sm"
+              items={FILTERS.map((f) => ({ ...f, count: counts[f.value] }))}
+              value={statusFilter}
+              onChange={setStatusFilter}
             />
-            <input
-              type="text"
-              placeholder="Buscar por nombre o dirección..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-11 pl-11 pr-4 rounded-lg border border-slate-200 bg-white text-sm text-slate-900 placeholder-slate-400 transition-all duration-200 focus:outline-none focus:border-primary focus:ring-[3px] focus:ring-primary/20"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map((opt) => {
-              const active = statusFilter === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setStatusFilter(opt.value)}
-                  className={[
-                    "h-9 px-3.5 rounded-lg text-sm font-semibold transition-all duration-200 border focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
-                    active
-                      ? "bg-primary text-white border-primary shadow-sm"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-300",
-                  ].join(" ")}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
           </div>
         </div>
-
-        {loading ? (
-          <div className="p-12 text-center text-sm text-slate-500">Cargando canchas...</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-primary-50 text-primary mx-auto mb-3 flex items-center justify-center">
-              <Trophy className="h-7 w-7" strokeWidth={2} aria-hidden />
-            </div>
-            <p className="text-base font-semibold font-heading text-slate-900">
-              {searchTerm ? "Sin resultados" : "Aún no has registrado canchas"}
-            </p>
-            <p className="text-sm text-slate-500 mt-1 mb-4">
-              {searchTerm
-                ? `No se encontró nada para "${searchTerm}"`
-                : "Comienza registrando tu primera cancha."}
-            </p>
-            {!searchTerm && (
-              <Button variant="primary" size="md" onClick={() => setIsAddModalOpen(true)}>
-                <Plus className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
-                Registrar cancha
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-[11px] uppercase tracking-[0.1em] text-slate-500">
-                  <th className="text-left font-semibold px-5 py-3">Cancha</th>
-                  <th className="text-left font-semibold px-5 py-3 hidden md:table-cell">
-                    Dirección
-                  </th>
-                  <th className="text-right font-semibold px-5 py-3 hidden lg:table-cell">
-                    Precio
-                  </th>
-                  <th className="text-left font-semibold px-5 py-3">Estado</th>
-                  <th className="text-left font-semibold px-5 py-3 hidden lg:table-cell">
-                    Creada
-                  </th>
-                  <th className="text-right font-semibold px-5 py-3">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((field) => {
-                  const st = STATUS_LABEL[field.status] || {
-                    label: field.status,
-                    tone: "neutral",
-                  };
-                  const created = field.createdAt?.seconds
-                    ? new Date(field.createdAt.seconds * 1000).toLocaleDateString()
-                    : "—";
-                  const isDisabled = field.status === "disabled";
-                  return (
-                    <tr key={field.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-primary-50 to-secondary/10 flex items-center justify-center text-primary overflow-hidden">
-                            {field.imageUrl ? (
-                              <img
-                                src={field.imageUrl}
-                                alt=""
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <Trophy className="h-5 w-5" strokeWidth={2} aria-hidden />
-                            )}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-900 truncate">
-                              {field.name || "Sin nombre"}
-                            </p>
-                            <p className="md:hidden text-xs text-slate-500 truncate flex items-center gap-1">
-                              <MapPin className="h-3 w-3 shrink-0" strokeWidth={2} aria-hidden />
-                              {field.address || "Sin dirección"}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-slate-600 hidden md:table-cell max-w-xs truncate">
-                        {field.address || "Sin dirección"}
-                      </td>
-                      <td className="px-5 py-4 text-right font-semibold text-slate-900 hidden lg:table-cell">
-                        <span className="inline-flex items-center justify-end gap-0.5">
-                          <Banknote className="h-3.5 w-3.5 shrink-0 text-cta-600" strokeWidth={2} aria-hidden />
-                          {field.pricePerHour || 0}
-                        </span>
-                        <span className="ml-1 text-xs font-normal text-slate-400">/h</span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <StatusPill tone={st.tone} size="sm">
-                          {st.label}
-                        </StatusPill>
-                      </td>
-                      <td className="px-5 py-4 text-slate-500 hidden lg:table-cell">
-                        {created}
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setFieldToEdit(field);
-                              setIsEditModalOpen(true);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                            Editar
-                          </Button>
-                          <Button
-                            variant={isDisabled ? "primary" : "danger"}
-                            size="sm"
-                            disabled={loadingAction}
-                            onClick={() => handleToggleDisable(field)}
-                          >
-                            {isDisabled ? (
-                              <>
-                                <CircleCheck className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                                Habilitar
-                              </>
-                            ) : (
-                              <>
-                                <X className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-                                Deshabilitar
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        {body}
+        {!loading && !loadError && filtered.length > 0 && (
+          <LoadMoreFooter
+            className="border-t border-line px-4 py-3"
+            shown={pager.visibleItems.length}
+            total={pager.total}
+            hasMore={pager.hasMore}
+            onLoadMore={pager.loadMore}
+          />
         )}
       </SectionCard>
 
       <Footer />
 
-      <AddFieldModal
-        open={isAddModalOpen}
-        onClose={handleCloseAddModal}
-        onSubmit={handleCreateField}
-        loading={loadingAction}
+      <FieldFormModal
+        open={Boolean(formState)}
+        mode={formState?.mode || "create"}
+        field={formState?.field || null}
+        loading={saving}
+        onClose={() => setFormState(null)}
+        onSubmit={handleSubmit}
       />
-      <EditFieldModal
-        open={isEditModalOpen}
-        onClose={() => {
-          setIsEditModalOpen(false);
-          setFieldToEdit(null);
-        }}
-        onSubmit={handleUpdateField}
-        loading={loadingAction}
-        field={fieldToEdit}
-      />
-      <ConfirmationDialog
-        open={isConfirmOpen}
-        onClose={() => {
-          setIsConfirmOpen(false);
-          setFieldToToggle(null);
-        }}
-        onConfirm={confirmToggleDisable}
-        title={`Confirmar ${
-          confirmActionText === "habilitar" ? "habilitación" : "deshabilitación"
-        }`}
-        message={`¿Estás seguro de que quieres ${confirmActionText} la cancha "${
-          fieldToToggle?.name || "esta cancha"
-        }"?`}
-        confirmColor={confirmActionText === "habilitar" ? "success" : "error"}
+
+      <ConfirmDialog
+        open={Boolean(fieldToToggle)}
+        title={enabling ? "¿Habilitar cancha?" : "¿Deshabilitar cancha?"}
+        description={
+          enabling
+            ? `"${fieldToToggle?.name || "La cancha"}" volverá a mostrarse en el catálogo y aceptará reservas.`
+            : `"${fieldToToggle?.name || "La cancha"}" dejará de mostrarse en el catálogo y no aceptará nuevas reservas.`
+        }
+        confirmLabel={enabling ? "Habilitar" : "Deshabilitar"}
+        variant={enabling ? "primary" : "danger"}
+        loading={toggling}
+        onConfirm={confirmToggle}
+        onClose={() => setFieldToToggle(null)}
       />
 
       <Toast

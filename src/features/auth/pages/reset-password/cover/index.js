@@ -1,131 +1,127 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import FullScreenLoader from "shared/components/loaders/FullScreenLoader";
-import SplitScreenLayout from "features/auth/components/SplitScreenLayout";
-import { Toast } from "shared/components/ui";
+import { MailCheck } from "lucide-react";
+import { Button, TextField, Toast } from "shared/components/ui";
+import AuthShell from "features/auth/components/AuthShell";
+import { getAuthErrorMessage } from "features/auth/utils/authErrors";
 import { sendPasswordReset } from "shared/services/firebaseService";
-import bgImage from "assets/images/bg-reset-cover.jpeg";
 
-const getFriendlyError = (code) => {
-  const map = {
-    "auth/user-not-found": "No existe una cuenta con este correo electrónico.",
-    "auth/invalid-email": "El correo electrónico no es válido.",
-    "auth/too-many-requests": "Demasiados intentos. Por favor, espera unos minutos.",
-    "auth/unauthorized-domain": "El dominio no está autorizado. Contacta al administrador.",
-    "auth/unauthorized-continue-uri": "La URL de redirección no está autorizada.",
-    "auth/invalid-continue-uri": "La URL de redirección no es válida.",
-    "auth/missing-continue-uri": "Falta la URL de redirección.",
-  };
-  return map[code] ?? `Ocurrió un error (${code || "desconocido"}). Inténtalo más tarde.`;
+const ASIDE = {
+  heading: "Recupera el acceso a tu cuenta.",
+  description: "Te enviaremos un enlace seguro al correo con el que te registraste.",
+  points: [
+    "El enlace funciona una sola vez",
+    "Revisa también tu carpeta de spam",
+    "Si no lo recibes, puedes solicitar otro",
+  ],
 };
 
-function Cover() {
+const getErrorMessage = (code) => {
+  if (code === "auth/user-not-found") return "No existe una cuenta con este correo electrónico.";
+  if (code === "auth/unauthorized-continue-uri" || code === "auth/invalid-continue-uri") {
+    return "La URL de redirección no está autorizada. Contacta al administrador.";
+  }
+  return getAuthErrorMessage(code);
+};
+
+function ResetPassword() {
   const [email, setEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [toast, setToast] = useState({ open: false, type: "info", message: "" });
+  const [loading, setLoading] = useState(false);
+  const [sentTo, setSentTo] = useState(null);
+  const [toast, setToast] = useState({ open: false, type: "error", message: "" });
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email) { setToast({ open: true, type: "warning", message: "Por favor, ingresa tu correo electrónico." }); return; }
-    setIsLoading(true);
+    const value = email.trim();
+    if (!value || loading) return;
+    setLoading(true);
     try {
-      await sendPasswordReset(email);
-      setEmailSent(true);
-      setToast({ open: true, type: "success", message: "Se ha enviado un correo con las instrucciones para restablecer tu contraseña." });
-    } catch (err) {
-      setToast({ open: true, type: "error", message: getFriendlyError(err.code) });
+      await sendPasswordReset(value);
+      setSentTo(value);
+    } catch (error) {
+      setToast({ open: true, type: "error", message: getErrorMessage(error.code) });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const inputClass = "w-full border border-gray-200 rounded-xl px-4 py-2.5 pl-10 text-sm text-dark placeholder-gray-400 bg-gray-50 focus:outline-none focus:border-goaltime focus:ring-2 focus:ring-goaltime/20 transition-all";
-
-  const leftContent = (
-    <div
-      className="w-full h-full"
-      style={{ backgroundImage: `url(${bgImage})`, backgroundSize: "cover", backgroundPosition: "center" }}
-    />
-  );
-
-  const rightContent = (
-    <div className="w-full h-full flex flex-col justify-center px-6 sm:px-10 md:px-14 py-8 relative">
-      {isLoading && <FullScreenLoader />}
-
-      <Link
-        to="/sobre-nosotros"
-        className="absolute bottom-6 right-6 w-10 h-10 rounded-full bg-dark text-white flex items-center justify-center hover:bg-dark-800 transition-colors text-sm"
+  if (sentTo) {
+    return (
+      <AuthShell
+        title="Revisa tu correo"
+        subtitle={
+          <>
+            Enviamos las instrucciones para restablecer tu contraseña a{" "}
+            <strong className="font-medium text-fg">{sentTo}</strong>.
+          </>
+        }
+        aside={ASIDE}
+        backTo="/authentication/sign-in"
+        backLabel="Iniciar sesión"
       >
-        ?
-      </Link>
-
-      <div className="max-w-sm mx-auto w-full">
-        <Link to="/authentication/sign-in" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-dark hover:underline mb-6">
-          ← Volver al inicio de sesión
-        </Link>
-
-        <h2 className="text-2xl font-bold text-dark mb-1">Restablecer Contraseña</h2>
-        <p className="text-sm text-gray-500 mb-6">Ingresa tu correo y te enviaremos un enlace para restablecerla</p>
-
-        {emailSent ? (
-          <div>
-            <div className="text-center mb-5">
-              <p className="text-2xl mb-2">✅</p>
-              <p className="font-bold text-green-600 mb-2">Correo Enviado</p>
-              <p className="text-sm text-gray-500 mb-2">
-                Hemos enviado instrucciones a <strong>{email}</strong>.
-              </p>
-              <p className="text-xs text-gray-400">Si no lo encuentras, revisa tu carpeta de spam.</p>
-            </div>
-            <Link
-              to="/authentication/sign-in"
-              className="w-full block text-center py-3 bg-goaltime hover:bg-goaltime-500 text-white font-semibold rounded-xl text-sm transition-all shadow-goaltime"
-            >
-              Volver a Iniciar Sesión
-            </Link>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-xs font-medium text-dark mb-1">Correo Electrónico</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">✉️</span>
-                <input
-                  type="email"
-                  placeholder="nombre@ejemplo.com"
-                  className={inputClass}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 bg-goaltime hover:bg-goaltime-500 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl text-sm transition-all shadow-goaltime"
-            >
-              {isLoading ? "Enviando..." : "Enviar Enlace de Restablecimiento"}
-            </button>
-
-            <p className="text-center text-sm text-gray-500">
-              ¿Recordaste tu contraseña?{" "}
-              <Link to="/authentication/sign-in" className="text-goaltime font-semibold hover:underline">
-                Iniciar Sesión
-              </Link>
-            </p>
-          </form>
-        )}
-      </div>
-
-      <Toast open={toast.open} type={toast.type} message={toast.message} onClose={() => setToast((t) => ({ ...t, open: false }))} />
-    </div>
-  );
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-line bg-zinc-50 p-3 text-[13px] leading-5 text-fg-muted">
+          <MailCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary-600" aria-hidden="true" />
+          Si no lo encuentras en unos minutos, revisa la carpeta de spam o correo no deseado.
+        </div>
+        <div className="space-y-2">
+          <Button type="button" variant="secondary" size="lg" fullWidth onClick={() => setSentTo(null)}>
+            Usar otro correo
+          </Button>
+          <Link
+            to="/authentication/sign-in"
+            className="block py-2 text-center text-sm font-medium text-primary-600 hover:underline"
+          >
+            Volver a iniciar sesión
+          </Link>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
-    <SplitScreenLayout leftContent={leftContent} rightContent={rightContent} leftWidth="50%" rightWidth="50%" />
+    <AuthShell
+      title="Restablecer contraseña"
+      subtitle="Ingresa tu correo y te enviaremos un enlace para crear una nueva contraseña."
+      aside={ASIDE}
+      backTo="/authentication/sign-in"
+      backLabel="Iniciar sesión"
+      footer={
+        <>
+          ¿Recordaste tu contraseña?{" "}
+          <Link to="/authentication/sign-in" className="font-medium text-primary-600 hover:underline">
+            Iniciar sesión
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <TextField
+          id="reset-email"
+          name="email"
+          type="email"
+          size="lg"
+          label="Correo electrónico"
+          placeholder="nombre@ejemplo.com"
+          autoComplete="email"
+          inputMode="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          disabled={loading}
+        />
+        <Button type="submit" size="lg" fullWidth loading={loading}>
+          {loading ? "Enviando…" : "Enviar enlace"}
+        </Button>
+      </form>
+
+      <Toast
+        open={toast.open}
+        type={toast.type}
+        message={toast.message}
+        onClose={() => setToast((t) => ({ ...t, open: false }))}
+      />
+    </AuthShell>
   );
 }
 
-export default Cover;
+export default ResetPassword;

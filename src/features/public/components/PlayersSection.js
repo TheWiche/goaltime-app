@@ -1,105 +1,72 @@
-import { Link } from "react-router-dom";
+import { Bell, CalendarCheck, Clock, Heart, ListChecks, Search } from "lucide-react";
+import ButtonLink from "shared/components/layout/ButtonLink";
 import { useAuth } from "shared/context/AuthContext";
-import { useSectionEntrance, useFieldCardsStagger } from "shared/hooks/useGSAPAnimations";
-
-const iconColors = {
-  info: "bg-blue-100 text-blue-600",
-  success: "bg-goaltime-100 text-goaltime-700",
-  primary: "bg-purple-100 text-purple-600",
-  secondary: "bg-gray-100 text-gray-600",
-  warning: "bg-orange-100 text-orange-600",
-  error: "bg-red-100 text-red-600",
-};
+import SectionHeader from "features/public/components/SectionHeader";
 
 const features = [
   {
-    emoji: "🔍",
-    title: "Búsqueda Fácil",
-    description: "Encuentra canchas por deporte, ubicación y disponibilidad en segundos.",
-    color: "info",
+    icon: Search,
+    title: "Encuentra tu cancha",
+    description: "Explora las canchas disponibles con su información, fotos y precio por hora.",
   },
   {
-    emoji: "⚡",
-    title: "Reserva Instantánea",
-    description: "Confirma tu reserva al instante sin llamadas ni esperas.",
-    color: "success",
+    icon: CalendarCheck,
+    title: "Reserva en línea",
+    description: "Elige fecha y horario y envía tu solicitud sin llamadas ni mensajes.",
   },
   {
-    emoji: "📍",
-    title: "Cerca de Ti",
-    description: "Descubre las mejores canchas en tu área con mapas integrados.",
-    color: "primary",
+    icon: Clock,
+    title: "Disponibilidad real",
+    description: "Los horarios ocupados se bloquean al instante para evitar dobles reservas.",
   },
   {
-    emoji: "🕐",
-    title: "Horarios Flexibles",
-    description: "Reserva en el horario que mejor se adapte a tu agenda.",
-    color: "secondary",
+    icon: Heart,
+    title: "Tus favoritas",
+    description: "Guarda las canchas que más usas y vuelve a ellas en un clic.",
   },
   {
-    emoji: "⚽",
-    title: "Múltiples Deportes",
-    description: "Fútbol, pádel, baloncesto, tenis y más en una sola plataforma.",
-    color: "warning",
+    icon: Bell,
+    title: "Avisos de tu reserva",
+    description: "Recibe notificaciones y correos cuando cambie el estado de tu reserva.",
   },
   {
-    emoji: "✅",
-    title: "Reseñas Verificadas",
-    description: "Lee opiniones de otros jugadores para elegir la mejor opción.",
-    color: "error",
+    icon: ListChecks,
+    title: "Todo en un lugar",
+    description: "Consulta, gestiona y cancela tus reservas desde tu cuenta.",
   },
 ];
 
 function PlayersSection() {
   const { currentUser } = useAuth();
-  const headerRef = useSectionEntrance({ y: 20 });
-  const cardsRef = useFieldCardsStagger(".feature-card");
 
   return (
-    <section id="jugadores" className="py-16 bg-white">
-      <div className="container mx-auto px-4">
-        {/* Cabecera */}
-        <div ref={headerRef} className="text-center mb-12">
-          <span className="inline-block bg-orange-100 text-orange-700 text-xs font-bold px-3 py-1 rounded-full mb-3">
-            Soluciones para Jugadores
-          </span>
-          <h2 className="text-3xl md:text-4xl font-bold text-dark mb-3">
-            Juega, Reserva y Disfruta
-          </h2>
-          <p className="text-gray-500 max-w-xl mx-auto">
-            Encuentra, reserva y juega en las mejores canchas deportivas cerca de ti. ¡Tu partido
-            ideal comienza aquí!
-          </p>
-        </div>
+    <section id="jugadores" className="scroll-mt-14 bg-canvas py-16 md:py-20">
+      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        <SectionHeader
+          eyebrow="Para jugadores"
+          title="Juega, reserva y disfruta"
+          description="Encuentra, reserva y juega en las mejores canchas cerca de ti. Tu partido ideal comienza aquí."
+        />
 
-        {/* Grid de características con stagger GSAP */}
-        <div ref={cardsRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature) => (
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map(({ icon: Icon, title, description }) => (
             <div
-              key={feature.title}
-              className="feature-card bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-card hover:shadow-card-hover hover:-translate-y-1 transition-all duration-200"
+              key={title}
+              className="rounded-lg border border-line bg-white p-5 transition-colors hover:border-line-strong"
             >
-              <div
-                className={`inline-flex items-center justify-center w-14 h-14 rounded-xl text-2xl ${
-                  iconColors[feature.color]
-                } mb-4`}
-              >
-                {feature.emoji}
+              <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-zinc-50 text-primary-600">
+                <Icon className="h-4 w-4" aria-hidden="true" />
               </div>
-              <h3 className="font-semibold text-dark text-lg mb-2">{feature.title}</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{feature.description}</p>
+              <h3 className="mt-4 text-sm font-semibold text-fg-strong">{title}</h3>
+              <p className="mt-1.5 text-[13px] leading-5 text-fg-muted">{description}</p>
             </div>
           ))}
         </div>
 
-        {/* CTA */}
-        <div className="flex justify-center mt-10">
-          <Link
-            to={currentUser ? "/canchas" : "/authentication/sign-in"}
-            className="inline-flex items-center gap-2 bg-goaltime hover:bg-goaltime-500 text-white font-semibold px-7 py-3 rounded-xl shadow-goaltime transition-all duration-200 hover:scale-105 active:scale-95"
-          >
-            🌐 Explora Canchas
-          </Link>
+        <div className="mt-8">
+          <ButtonLink to={currentUser ? "/canchas" : "/authentication/sign-in"} variant="primary" size="lg">
+            Explorar canchas
+          </ButtonLink>
         </div>
       </div>
     </section>

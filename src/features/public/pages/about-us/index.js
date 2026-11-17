@@ -1,76 +1,73 @@
+import { CircleAlert, CircleCheck } from "lucide-react";
 import PublicLayout from "shared/components/layout/PublicLayout";
-import { useSectionEntrance } from "shared/hooks/useGSAPAnimations";
+import { Avatar } from "shared/components/ui";
 
 const values = [
   {
-    emoji: "⚠️",
-    title: "El Problema",
-    description: "Llamadas interminables, mensajes sin respuesta y dudas sobre la disponibilidad. Los jugadores pierden tiempo buscando, y los dueños pierden potenciales clientes.",
+    icon: CircleAlert,
+    title: "El problema",
+    description:
+      "Llamadas interminables, mensajes sin respuesta y dudas sobre la disponibilidad. Los jugadores pierden tiempo buscando, y los dueños pierden potenciales clientes.",
   },
   {
-    emoji: "✅",
-    title: "La Solución GoalTime",
-    description: "Un puente que une ambos mundos. Ofrecemos una interfaz limpia y en tiempo real para reservar en segundos, y un panel de control intuitivo para los dueños.",
+    icon: CircleCheck,
+    title: "La solución GoalTime",
+    description:
+      "Un puente que une ambos mundos. Ofrecemos una interfaz limpia y en tiempo real para reservar en segundos, y un panel de control intuitivo para los dueños.",
   },
 ];
 
-const team = [
-  { name: "Nelson Cotes", title: "Desarrollador" },
-];
-
-function getInitials(fullName) {
-  const parts = fullName.trim().split(" ");
-  return parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : fullName.slice(0, 2).toUpperCase();
-}
+const team = [{ name: "Nelson Cotes", title: "Desarrollador" }];
 
 function AboutUs() {
-  const ref = useSectionEntrance({ y: 24 });
-
   return (
     <PublicLayout>
-      {/* Hero */}
-      <div className="bg-dark min-h-[25vh] flex items-center justify-center">
-        <h1 className="text-white font-bold text-3xl md:text-4xl">Sobre Nosotros</h1>
+      <div className="border-b border-line bg-white">
+        <div className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6 md:py-14">
+          <h1 className="text-3xl font-semibold tracking-tight text-fg-strong">Sobre nosotros</h1>
+        </div>
       </div>
 
-      {/* Content */}
-      <div ref={ref} className="container mx-auto px-4 py-12 max-w-4xl">
-        {/* Misión */}
-        <div className="bg-white rounded-2xl shadow-card p-6 mb-8">
-          <h2 className="text-2xl font-bold text-goaltime mb-4">
-            Nuestra Misión: Conectar tu Pasión por el Fútbol
+      <div className="mx-auto w-full max-w-4xl space-y-8 px-4 py-10 sm:px-6 md:py-12">
+        <section className="rounded-lg border border-line bg-white p-5 sm:p-6">
+          <h2 className="text-lg font-semibold tracking-tight text-fg-strong">
+            Nuestra misión: conectar tu pasión por el fútbol
           </h2>
-          <p className="text-gray-600 leading-relaxed">
-            Bienvenido a <strong>GoalTime</strong>, la plataforma definitiva para los amantes del fútbol en Riohacha y más allá. Nacimos de una simple pregunta: ¿por qué es tan complicado encontrar y reservar una cancha para jugar un partido con amigos?
+          <p className="mt-3 text-sm leading-6 text-fg-muted">
+            Bienvenido a <strong className="font-medium text-fg">GoalTime</strong>, la plataforma para los amantes del
+            fútbol en Riohacha y más allá. Nacimos de una simple pregunta: ¿por qué es tan complicado encontrar y
+            reservar una cancha para jugar un partido con amigos?
           </p>
-        </div>
+        </section>
 
-        {/* Problema / Solución */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
-          {values.map(({ emoji, title, description }) => (
-            <div key={title} className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+        <div className="grid gap-4 md:grid-cols-2">
+          {values.map(({ icon: Icon, title, description }) => (
+            <section key={title} className="rounded-lg border border-line bg-white p-5">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{emoji}</span>
-                <h3 className="font-bold text-dark text-lg">{title}</h3>
+                <span className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-zinc-50 text-primary-600">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <h3 className="text-sm font-semibold text-fg-strong">{title}</h3>
               </div>
-              <p className="text-gray-500 text-sm leading-relaxed">{description}</p>
-            </div>
+              <p className="mt-3 text-[13px] leading-5 text-fg-muted">{description}</p>
+            </section>
           ))}
         </div>
 
-        {/* Equipo */}
-        <h2 className="text-2xl font-bold text-dark text-center mb-6">Conoce al Equipo</h2>
-        <div className="flex justify-center gap-5 flex-wrap">
-          {team.map(({ name, title }) => (
-            <div key={name} className="bg-white rounded-2xl shadow-card p-6 text-center w-48">
-              <div className="w-20 h-20 rounded-full bg-goaltime-100 text-goaltime-700 text-2xl font-bold flex items-center justify-center mx-auto mb-3">
-                {getInitials(name)}
+        <section>
+          <h2 className="text-lg font-semibold tracking-tight text-fg-strong">Conoce al equipo</h2>
+          <div className="mt-4 flex flex-wrap gap-4">
+            {team.map(({ name, title }) => (
+              <div key={name} className="flex w-full items-center gap-4 rounded-lg border border-line bg-white p-4 sm:w-64">
+                <Avatar name={name} size="lg" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-fg-strong">{name}</p>
+                  <p className="text-[13px] text-fg-muted">{title}</p>
+                </div>
               </div>
-              <p className="font-bold text-dark">{name}</p>
-              <p className="text-sm text-goaltime font-medium">{title}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
       </div>
     </PublicLayout>
   );

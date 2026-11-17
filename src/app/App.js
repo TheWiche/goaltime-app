@@ -1,7 +1,7 @@
 // src/app/App.js
 
-import { useState, useEffect, useMemo } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Routes, Route, Navigate, matchPath, useLocation } from "react-router-dom";
 import { Sidenav } from "shared/components/layout";
 import routes from "app/routes";
 import { useMaterialUIController, setMiniSidenav } from "shared/context";
@@ -11,15 +11,11 @@ import GlobalSettingsModal from "shared/components/notifications/GlobalSettingsM
 
 export default function App() {
   const [controller, dispatch] = useMaterialUIController();
-  const {
-    miniSidenav,
-    direction,
-    layout,
-    sidenavColor,
-  } = controller;
+  const { miniSidenav, sidenavColor } = controller;
   const [onMouseEnter, setOnMouseEnter] = useState(false);
-  const { pathname } = useLocation();
-  const { userProfile } = useAuth(); // AuthContext maneja el estado de carga inicial
+  const { pathname, state } = useLocation();
+  const { userProfile } = useAuth();
+  const role = userProfile?.role || null;
 
   const handleOnMouseEnter = () => {
     if (miniSidenav && !onMouseEnter) {
@@ -35,105 +31,32 @@ export default function App() {
     }
   };
 
+  // Al cambiar de ruta vuelve arriba, salvo que se navegue a una sección ancla (state.scrollTo).
   useEffect(() => {
-    document.body.setAttribute("dir", direction);
-  }, [direction]);
+    if (state?.scrollTo) return;
+    window.scrollTo(0, 0);
+  }, [pathname, state]);
 
-  useEffect(() => {
-    document.documentElement.scrollTop = 0;
-    document.scrollingElement.scrollTop = 0;
-  }, [pathname]);
+  // Todas las rutas se registran siempre: el acceso lo imponen ProtectedRoute (sesión, email y
+  // rol) y GuestRoute. Filtrar aquí por perfil provocaba rutas "inexistentes" mientras el
+  // perfil cargaba (p. ej. verify-email justo tras el registro).
+  const routeElements = useMemo(
+    () => routes.map((route) => <Route key={route.key} path={route.route} element={route.component} />),
+    []
+  );
 
-  // Tu lógica de filteredRoutes está PERFECTA. No la cambiamos.
-  const filteredRoutes = useMemo(() => {
-    const publicKeys = [
-      "homepage", // Asegúrate de que tu ruta "/" tenga key: "homepage" en routes.js
-      "about-us",
-      "blog",
-      "license",
-      "become-associate",
-      "privacy-policy",
-      "terms-of-service",
-    ];
+  // Menú lateral: lista blanca por rol (cada ruta declara los `roles` que la ven).
+  const sidenavRoutes = useMemo(
+    () => routes.filter((route) => route.type === "collapse" && role && route.roles?.includes(role)),
+    [role]
+  );
 
-    if (!userProfile) {
-      return routes.filter(
-        (route) =>
-          publicKeys.includes(route.key) ||
-          route.key === "sign-in" ||
-          route.key === "sign-up" ||
-          route.key === "reset-password" ||
-          route.key === "confirm-reset-password" ||
-          route.key === "handle-firebase-action"
-      );
-    }
-
-    let userRoutes = routes.filter(
-      (route) =>
-        route.key !== "sign-in" &&
-        route.key !== "sign-up" &&
-        route.key !== "rtl" &&
-        route.key !== "reset-password" &&
-        route.key !== "confirm-reset-password" &&
-        route.key !== "handle-firebase-action"
-    );
-
-    if (userProfile.role === "cliente") {
-      userRoutes = userRoutes.filter(
-        (route) =>
-          route.key !== "dashboard" &&
-          route.key !== "admin-users" &&
-          route.key !== "admin-fields" &&
-          route.key !== "associate-fields" &&
-          route.key !== "associate-reservations"
-      );
-    } else if (userProfile.role === "asociado") {
-      userRoutes = userRoutes.filter(
-        (route) =>
-          route.key !== "admin-users" &&
-          route.key !== "admin-fields" &&
-          route.key !== "reservations"
-      );
-    } else if (userProfile.role === "admin") {
-      // admin-fields ya no se muestra en el menú, la funcionalidad está en "Canchas"
-      userRoutes = userRoutes.filter(
-        (route) =>
-          route.key !== "associate-fields" &&
-          route.key !== "admin-fields" &&
-          route.key !== "associate-reservations" &&
-          route.key !== "reservations"
-      );
-    }
-
-    return userRoutes;
-  }, [userProfile]); // El 'userProfile' es provisto por AuthContext después de la carga inicial
-
-  const getRoutes = (allRoutes) =>
-    allRoutes.map((route) => {
-      if (route.collapse) {
-        return getRoutes(route.collapse);
-      }
-      if (route.route) {
-        // React Router v6 no usa 'exact', las rutas se hacen coincidir automáticamente
-        return <Route path={route.route} element={route.component} key={route.key} />;
-      }
-      return null;
-    });
-
-  // Determinar si se debe mostrar el sidebar
-  // Solo mostrar en rutas protegidas del dashboard, excluyendo páginas públicas y de autenticación
-  const shouldHideSidenav =
-    pathname === "/" ||
-    pathname.includes("/authentication") ||
-    pathname.includes("/__/auth") ||
-    pathname.includes("/politica-de-privacidad") ||
-    pathname.includes("/terminos-y-condiciones") ||
-    pathname.includes("/sobre-nosotros") ||
-    pathname.includes("/blog") ||
-    pathname.includes("/licencia") ||
-    pathname.includes("/convertirse-en-asociado");
-
-  const showSidenav = layout === "dashboard" && !shouldHideSidenav && userProfile;
+  // El Sidenav solo se muestra en rutas con layout "dashboard" y con perfil cargado.
+  const activeRoute = useMemo(
+    () => routes.find((route) => matchPath({ path: route.route, end: true }, pathname)),
+    [pathname]
+  );
+  const showSidenav = Boolean(userProfile) && activeRoute?.layout === "dashboard";
 
   return (
     <>
@@ -142,18 +65,15 @@ export default function App() {
           color={sidenavColor}
           brand={brandDark}
           brandName="GoalTime"
-          routes={filteredRoutes.filter((route) => route.type === "collapse")}
+          routes={sidenavRoutes}
           onMouseEnter={handleOnMouseEnter}
           onMouseLeave={handleOnMouseLeave}
         />
       )}
       <Routes>
-        {getRoutes(filteredRoutes)}
-
-        {/* Redirección catch-all */}
-        <Route path="*" element={<Navigate to="/" />} />
+        {routeElements}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {/* Modal de configuración global */}
       {userProfile && <GlobalSettingsModal />}
     </>
   );

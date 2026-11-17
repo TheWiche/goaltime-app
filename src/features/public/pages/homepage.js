@@ -1,9 +1,8 @@
-// src/layouts/homepage/index.js
-
-import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "shared/context/AuthContext";
-import HomepageLayout from "features/public/pages/HomepageLayout";
+import PublicLayout from "shared/components/layout/PublicLayout";
+import { getHomePathForRole } from "shared/utils/url";
 import HeroSection from "features/public/components/HeroSection";
 import PlayersSection from "features/public/components/PlayersSection";
 import OwnersSection from "features/public/components/OwnersSection";
@@ -11,38 +10,35 @@ import TestimonialsSection from "features/public/components/TestimonialsSection"
 import ContactSection from "features/public/components/ContactSection";
 
 function Homepage() {
-  const { currentUser, userProfile, emailVerified, initialAuthLoading } = useAuth();
+  const { currentUser, userProfile, emailVerified, isSocialAuth, initialAuthLoading } = useAuth();
+  const { state } = useLocation();
   const navigate = useNavigate();
 
-  // Redirigir usuarios autenticados según su rol
+  // DECISIÓN DE PRODUCTO PENDIENTE: hoy la home redirige a los usuarios con sesión a su panel
+  // (verificados y con perfil). Si se quiere que puedan ver la home pública, basta con quitar este efecto.
   useEffect(() => {
-    if (initialAuthLoading) return;
-
-    if (currentUser) {
-      const isSocialAuth = currentUser.providerData?.some(
-        (provider) => provider.providerId === "google.com" || provider.providerId === "facebook.com"
-      );
-      const isEmailVerified = currentUser.emailVerified || emailVerified;
-
-      // Solo redirigir si el email está verificado (o es autenticación social) Y tenemos el perfil
-      if ((isEmailVerified || isSocialAuth) && userProfile) {
-        if (userProfile.role === "cliente") {
-          navigate("/canchas", { replace: true });
-        } else {
-          navigate("/dashboard", { replace: true });
-        }
-      }
+    if (initialAuthLoading || !currentUser || !userProfile) return;
+    if (currentUser.emailVerified || emailVerified || isSocialAuth) {
+      navigate(getHomePathForRole(userProfile.role), { replace: true });
     }
-  }, [currentUser, userProfile, emailVerified, initialAuthLoading, navigate]);
+  }, [initialAuthLoading, currentUser, userProfile, emailVerified, isSocialAuth, navigate]);
+
+  // Navegación a una sección ancla desde otra página (state.scrollTo).
+  const scrollTarget = state?.scrollTo;
+  useEffect(() => {
+    if (!scrollTarget) return;
+    document.getElementById(scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    navigate("/", { replace: true, state: null });
+  }, [scrollTarget, navigate]);
 
   return (
-    <HomepageLayout>
+    <PublicLayout>
       <HeroSection />
       <PlayersSection />
       <OwnersSection />
       <TestimonialsSection />
       <ContactSection />
-    </HomepageLayout>
+    </PublicLayout>
   );
 }
 

@@ -1,454 +1,218 @@
-import { MDBox, MDTypography, MDButton, MDSnackbar } from "shared/components/md-shims";
-/**
-=========================================================
-* GoalTime App - v2.2.0
-=========================================================
-*/
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { verifyPasswordResetCode } from "firebase/auth";
+import { CircleAlert, CircleCheck } from "lucide-react";
+import { Button, Spinner, Toast } from "shared/components/ui";
+import ButtonLink from "shared/components/layout/ButtonLink";
+import AuthShell from "features/auth/components/AuthShell";
+import PasswordField from "features/auth/components/PasswordField";
+import {
+  MIN_PASSWORD_LENGTH,
+  getAuthErrorMessage,
+} from "features/auth/utils/authErrors";
+import { auth, resetPassword } from "shared/services/firebaseService";
 
-import { useState, useEffect, useCallback } from "react";
-import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { Lock, Eye, EyeOff } from "lucide-react";
+const ASIDE = {
+  heading: "Crea una nueva contraseña.",
+  description: "Elige una contraseña que no uses en otros sitios.",
+  points: [
+    `Mínimo ${MIN_PASSWORD_LENGTH} caracteres`,
+    "Combina letras, números y símbolos",
+    "Después podrás iniciar sesión normalmente",
+  ],
+};
 
-// GoalTime App components
-import { FullScreenLoader } from "shared/components/loaders/FullScreenLoader";
-import SplitScreenLayout from "features/auth/components/SplitScreenLayout";
-
-// Services
-import { resetPassword } from "shared/services/firebaseService";
-
-// Images
-import bgImage from "assets/images/bg-reset-cover.jpeg";
+const REDIRECT_DELAY_MS = 2500;
 
 function ConfirmResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, color: "info", message: "" });
-  const [isValidCode, setIsValidCode] = useState(true);
+  const oobCode = searchParams.get("oobCode") || searchParams.get("oobcode");
 
-  // Firebase puede pasar el oobCode de diferentes maneras
-  const getOobCodeFromUrl = useCallback(() => {
-    const fromSearchParams = searchParams.get("oobCode") || searchParams.get("oobcode");
-    if (fromSearchParams) return fromSearchParams;
+  // "checking" | "valid" | "invalid" | "done"
+  const [status, setStatus] = useState(oobCode ? "checking" : "invalid");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [invalidMessage, setInvalidMessage] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState({ open: false, type: "error", message: "" });
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const fromWindow = urlParams.get("oobCode") || urlParams.get("oobcode");
-    if (fromWindow) return fromWindow;
-
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const fromHash = hashParams.get("oobCode") || hashParams.get("oobcode");
-    if (fromHash) return fromHash;
-
-    return null;
-  }, [searchParams]);
-
-  const oobCode = getOobCodeFromUrl();
-
+  // Valida el código del enlace al montar (antes de pedir la contraseña).
   useEffect(() => {
-    // Si estamos en la página de acción de Firebase, redirigir
-    if (window.location.pathname === "/__/auth/action") {
-      const urlParams = new URLSearchParams(window.location.search);
-      const actionCode = urlParams.get("oobCode");
-      const continueUrl = urlParams.get("continueUrl");
-
-      if (actionCode) {
-        let redirectUrl;
-        if (continueUrl && continueUrl.startsWith("http")) {
-          try {
-            let decodedUrl = decodeURIComponent(continueUrl);
-            if (
-              decodedUrl.includes("localhost") &&
-              window.location.origin.includes("goaltime.site")
-            ) {
-              decodedUrl = decodedUrl.replace(
-                /http:\/\/localhost:\d+/,
-                "https://www.goaltime.site"
-              );
-            } else if (decodedUrl.includes("goaltime.site") && !decodedUrl.includes("www.")) {
-              decodedUrl = decodedUrl.replace("https://goaltime.site", "https://www.goaltime.site");
-            }
-            redirectUrl = `${decodedUrl}?oobCode=${actionCode}`;
-          } catch (e) {
-            redirectUrl = `${continueUrl}?oobCode=${actionCode}`;
-          }
-        } else {
-          if (
-            window.location.hostname.includes("goaltime.site") &&
-            !window.location.hostname.includes("www.")
-          ) {
-            redirectUrl = `https://www.goaltime.site/authentication/reset-password/confirm?oobCode=${actionCode}`;
-          } else {
-            redirectUrl = `${window.location.origin}/authentication/reset-password/confirm?oobCode=${actionCode}`;
-          }
-        }
-        window.location.href = redirectUrl;
-        return;
-      }
+    if (!oobCode) {
+      setStatus("invalid");
+      return undefined;
     }
-
-    const currentCode = getOobCodeFromUrl();
-    if (!currentCode) {
-      const timer = setTimeout(() => {
-        const finalCode = getOobCodeFromUrl();
-        if (!finalCode) {
-          setIsValidCode(false);
-          setSnackbar({
-            open: true,
-            color: "error",
-            message:
-              "El enlace de restablecimiento no es válido o ha expirado. Por favor, solicita uno nuevo.",
-          });
-        } else {
-          setIsValidCode(true);
-        }
-      }, 1500);
-      return () => clearTimeout(timer);
-    } else {
-      setIsValidCode(true);
-    }
-  }, [searchParams, getOobCodeFromUrl, oobCode]);
-
-  const getFriendlyErrorMessage = (errorCode) => {
-    switch (errorCode) {
-      case "auth/expired-action-code":
-        return "El enlace de restablecimiento ha expirado. Por favor, solicita uno nuevo.";
-      case "auth/invalid-action-code":
-        return "El enlace de restablecimiento no es válido. Por favor, solicita uno nuevo.";
-      case "auth/weak-password":
-        return "La contraseña es muy débil. Debe tener al menos 6 caracteres.";
-      default:
-        return "Ocurrió un error al restablecer la contraseña. Por favor, inténtalo nuevamente.";
-    }
-  };
-
-  const validatePassword = () => {
-    if (newPassword.length < 6) {
-      setSnackbar({
-        open: true,
-        color: "warning",
-        message: "La contraseña debe tener al menos 6 caracteres.",
+    let cancelled = false;
+    setStatus("checking");
+    verifyPasswordResetCode(auth, oobCode)
+      .then((email) => {
+        if (cancelled) return;
+        setAccountEmail(email || "");
+        setStatus("valid");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setInvalidMessage(getAuthErrorMessage(error.code));
+        setStatus("invalid");
       });
-      return false;
-    }
-    if (newPassword !== confirmPassword) {
-      setSnackbar({
-        open: true,
-        color: "warning",
-        message: "Las contraseñas no coinciden.",
-      });
-      return false;
-    }
-    return true;
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [oobCode]);
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  // Tras restablecer, redirige a iniciar sesión (el timer se limpia al desmontar).
+  useEffect(() => {
+    if (status !== "done") return undefined;
+    const timer = setTimeout(() => navigate("/authentication/sign-in", { replace: true }), REDIRECT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [status, navigate]);
 
-    if (!validatePassword()) {
-      return;
-    }
+  const passwordError =
+    password.length < MIN_PASSWORD_LENGTH
+      ? `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`
+      : null;
+  const confirmError = password !== confirm ? "Las contraseñas no coinciden." : null;
 
-    const code = getOobCodeFromUrl();
-    if (!code) {
-      setSnackbar({
-        open: true,
-        color: "error",
-        message: "El enlace de restablecimiento no es válido. Por favor, solicita uno nuevo.",
-      });
-      return;
-    }
-
-    setIsLoading(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSubmitted(true);
+    if (saving || passwordError || confirmError) return;
+    setSaving(true);
     try {
-      await resetPassword(code, newPassword);
-      setSnackbar({
-        open: true,
-        color: "success",
-        message: "Tu contraseña ha sido restablecida exitosamente.",
-      });
-
-      setTimeout(() => {
-        navigate("/authentication/sign-in");
-      }, 2000);
+      await resetPassword(oobCode, password);
+      setStatus("done");
     } catch (error) {
-      setSnackbar({
-        open: true,
-        color: "error",
-        message: getFriendlyErrorMessage(error.code),
-      });
+      if (error.code === "auth/expired-action-code" || error.code === "auth/invalid-action-code") {
+        setInvalidMessage(getAuthErrorMessage(error.code));
+        setStatus("invalid");
+      } else {
+        setToast({ open: true, type: "error", message: getAuthErrorMessage(error.code) });
+      }
     } finally {
-      setIsLoading(false);
+      setSaving(false);
     }
   };
 
-  const closeSnackbar = () => setSnackbar({ ...snackbar, open: false });
+  if (status === "checking") {
+    return (
+      <AuthShell title="Validando enlace" aside={ASIDE} backTo="/authentication/sign-in" backLabel="Iniciar sesión">
+        <div className="flex items-center gap-3 text-sm text-fg-muted" role="status">
+          <Spinner size="sm" label="Validando enlace" />
+          Comprobando tu enlace de restablecimiento…
+        </div>
+      </AuthShell>
+    );
+  }
 
-  // Left Panel Content (40% - Image)
-  const leftContent = (
-    <MDBox
-      width="100%"
-      height="100%"
-      sx={{
-        backgroundImage: `url(${bgImage})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        position: "relative",
-        "&::before": {
-          content: '""',
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "rgba(0, 0, 0, 0.4)",
-        },
-      }}
-      display="flex"
-      flexDirection="column"
-      justifyContent="flex-end"
-      p={4}
-    >
-      <MDBox sx={{ position: "relative", zIndex: 1 }}>
-        <MDTypography variant="h3" fontWeight="bold" color="white" mb={2}>
-          Nueva Contraseña
-        </MDTypography>
-        <MDTypography variant="body1" color="white" sx={{ opacity: 0.9, maxWidth: "400px" }}>
-          Ingresa tu nueva contraseña para completar el restablecimiento.
-        </MDTypography>
-      </MDBox>
-    </MDBox>
-  );
+  if (status === "invalid") {
+    return (
+      <AuthShell
+        title="Enlace no válido"
+        subtitle="El enlace de restablecimiento no es válido o ya expiró."
+        aside={ASIDE}
+        backTo="/authentication/sign-in"
+        backLabel="Iniciar sesión"
+      >
+        <div className="mb-6 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 p-3 text-[13px] leading-5 text-red-700">
+          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {invalidMessage || "Solicita un nuevo enlace para continuar."}
+        </div>
+        <div className="space-y-2">
+          <ButtonLink to="/authentication/reset-password" size="lg" fullWidth>
+            Solicitar un nuevo enlace
+          </ButtonLink>
+          <Link
+            to="/authentication/sign-in"
+            className="block py-2 text-center text-sm font-medium text-primary-600 hover:underline"
+          >
+            Volver a iniciar sesión
+          </Link>
+        </div>
+      </AuthShell>
+    );
+  }
 
-  // Right Panel Content (60% - White Form)
-  const rightContent = (
-    <MDBox
-      width="100%"
-      height="100%"
-      display="flex"
-      flexDirection="column"
-      justifyContent="center"
-      px={{ xs: 3, sm: 6, md: 8 }}
-      py={4}
-      sx={{ position: "relative" }}
-    >
-      {isLoading && <FullScreenLoader />}
-
-      {!isValidCode && !getOobCodeFromUrl() ? (
-        <MDBox maxWidth="480px" mx="auto" width="100%">
-          <MDTypography variant="h3" fontWeight="bold" color="error" mb={2}>
-            Enlace Inválido
-          </MDTypography>
-          <MDTypography variant="body2" color="text" mb={4}>
-            El enlace de restablecimiento no es válido o ha expirado. Por favor, solicita uno nuevo.
-          </MDTypography>
-          <MDBox mt={4} mb={2}>
-            <MDButton
-              component={Link}
-              to="/authentication/reset-password"
-              variant="contained"
-              fullWidth
-              sx={{
-                backgroundColor: (theme) => theme.palette.goaltime.main,
-                color: "white",
-                py: 1.5,
-                textTransform: "none",
-                fontSize: "1rem",
-                fontWeight: "medium",
-                "&:hover": {
-                  backgroundColor: (theme) => theme.palette.goaltime.dark,
-                },
-              }}
-            >
-              Solicitar Nuevo Enlace
-            </MDButton>
-          </MDBox>
-          <MDBox mb={1}>
-            <MDButton
-              component={Link}
-              to="/authentication/sign-in"
-              variant="outlined"
-              fullWidth
-              sx={{
-                borderColor: "grey.300",
-                color: "text.primary",
-                py: 1.5,
-                textTransform: "none",
-                "&:hover": {
-                  borderColor: "grey.400",
-                  backgroundColor: "grey.50",
-                },
-              }}
-            >
-              Volver a Iniciar Sesión
-            </MDButton>
-          </MDBox>
-        </MDBox>
-      ) : (
-        <MDBox maxWidth="480px" mx="auto" width="100%">
-          <MDTypography variant="h3" fontWeight="bold" color="dark" mb={1}>
-            Nueva Contraseña
-          </MDTypography>
-          <MDTypography variant="body2" color="text" mb={4}>
-            Ingresa tu nueva contraseña para completar el restablecimiento
-          </MDTypography>
-
-          <MDBox component="form" onSubmit={handleSubmit}>
-            {/* New Password Input */}
-            <MDBox mb={3}>
-              <MDTypography
-                variant="caption"
-                color="text"
-                fontWeight="medium"
-                mb={1}
-                display="block"
-              >
-                Nueva Contraseña
-              </MDTypography>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                  <Lock className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-                </span>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="********"
-                  className="w-full rounded-lg border border-slate-300 bg-slate-100 py-2.5 pl-10 pr-11 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-primary/20"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-                  ) : (
-                    <Eye className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-                  )}
-                </button>
-              </div>
-            </MDBox>
-
-            {/* Confirm Password Input */}
-            <MDBox mb={4}>
-              <MDTypography
-                variant="caption"
-                color="text"
-                fontWeight="medium"
-                mb={1}
-                display="block"
-              >
-                Confirmar Contraseña
-              </MDTypography>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
-                  <Lock className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-                </span>
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="********"
-                  className="w-full rounded-lg border border-slate-300 bg-slate-100 py-2.5 pl-10 pr-11 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-primary/20"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 hover:bg-slate-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-                  ) : (
-                    <Eye className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-                  )}
-                </button>
-              </div>
-            </MDBox>
-
-            {/* Submit Button */}
-            <MDButton
-              type="submit"
-              variant="contained"
-              fullWidth
-              disabled={isLoading}
-              sx={{
-                backgroundColor: (theme) => theme.palette.goaltime.main,
-                color: "white",
-                py: 1.5,
-                mb: 3,
-                textTransform: "none",
-                fontSize: "1rem",
-                fontWeight: "medium",
-                "&:hover": {
-                  backgroundColor: (theme) => theme.palette.goaltime.dark,
-                },
-                "&:disabled": {
-                  backgroundColor: "grey.300",
-                  color: "grey.500",
-                },
-              }}
-            >
-              {isLoading ? "Restableciendo..." : "Restablecer Contraseña"}
-            </MDButton>
-
-            {/* Sign In Link */}
-            <MDBox textAlign="center">
-              <MDTypography variant="body2" color="text">
-                ¿Recordaste tu contraseña?{" "}
-                <MDTypography
-                  component={Link}
-                  to="/authentication/sign-in"
-                  variant="body2"
-                  sx={{
-                    color: (theme) => theme.palette.goaltime.main,
-                    fontWeight: "bold",
-                    textDecoration: "none",
-                    "&:hover": {
-                      textDecoration: "underline",
-                    },
-                  }}
-                >
-                  Iniciar Sesión
-                </MDTypography>
-              </MDTypography>
-            </MDBox>
-          </MDBox>
-        </MDBox>
-      )}
-
-      <MDSnackbar
-        color={snackbar.color}
-        icon={
-          snackbar.color === "success" ? "check" : snackbar.color === "error" ? "warning" : "info"
-        }
-        title="Restablecer Contraseña"
-        content={snackbar.message}
-        open={snackbar.open}
-        onClose={closeSnackbar}
-        close={closeSnackbar}
-        bgWhite={snackbar.color !== "info" && snackbar.color !== "dark"}
-      />
-    </MDBox>
-  );
+  if (status === "done") {
+    return (
+      <AuthShell title="Contraseña actualizada" aside={ASIDE} backTo="/authentication/sign-in" backLabel="Iniciar sesión">
+        <div
+          role="status"
+          className="mb-6 flex items-start gap-3 rounded-md border border-green-200 bg-green-50 p-3 text-[13px] leading-5 text-green-700"
+        >
+          <CircleCheck className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          Tu contraseña se restableció correctamente. Te llevaremos a iniciar sesión.
+        </div>
+        <Button type="button" size="lg" fullWidth onClick={() => navigate("/authentication/sign-in", { replace: true })}>
+          Iniciar sesión
+        </Button>
+      </AuthShell>
+    );
+  }
 
   return (
-    <SplitScreenLayout
-      leftContent={leftContent}
-      rightContent={rightContent}
-      leftWidth="40%"
-      rightWidth="60%"
-    />
+    <AuthShell
+      title="Nueva contraseña"
+      subtitle={
+        accountEmail ? (
+          <>
+            Crea una nueva contraseña para <strong className="font-medium text-fg">{accountEmail}</strong>.
+          </>
+        ) : (
+          "Ingresa tu nueva contraseña para completar el restablecimiento."
+        )
+      }
+      aside={ASIDE}
+      backTo="/authentication/sign-in"
+      backLabel="Iniciar sesión"
+      footer={
+        <>
+          ¿Recordaste tu contraseña?{" "}
+          <Link to="/authentication/sign-in" className="font-medium text-primary-600 hover:underline">
+            Iniciar sesión
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        {/* Campo oculto para que los gestores de contraseñas asocien la cuenta */}
+        <input type="email" name="username" value={accountEmail} autoComplete="username" readOnly hidden />
+        <PasswordField
+          id="reset-password"
+          name="password"
+          label="Nueva contraseña"
+          placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
+          autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          error={submitted ? passwordError : null}
+          disabled={saving}
+        />
+        <PasswordField
+          id="reset-password-confirm"
+          name="confirmPassword"
+          label="Confirmar contraseña"
+          placeholder="Repite la contraseña"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          error={submitted || confirm ? confirmError : null}
+          disabled={saving}
+        />
+        <Button type="submit" size="lg" fullWidth loading={saving}>
+          {saving ? "Restableciendo…" : "Restablecer contraseña"}
+        </Button>
+      </form>
+
+      <Toast
+        open={toast.open}
+        type={toast.type}
+        message={toast.message}
+        onClose={() => setToast((t) => ({ ...t, open: false }))}
+      />
+    </AuthShell>
   );
 }
 

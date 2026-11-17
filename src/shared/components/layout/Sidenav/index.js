@@ -1,214 +1,202 @@
-import { useEffect } from "react";
-import { useLocation, NavLink } from "react-router-dom";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import PropTypes from "prop-types";
 import { X, Shield, Briefcase, User } from "lucide-react";
 import { useAuth } from "shared/context/AuthContext";
-import {
-  useMaterialUIController,
-  setMiniSidenav,
-  setTransparentSidenav,
-  setWhiteSidenav,
-} from "shared/context";
+import { useMaterialUIController, setMiniSidenav } from "shared/context";
+import { IconButton, cx, focusRing } from "shared/components/ui";
 import SidenavCollapse from "./SidenavCollapse";
 import SidenavRoot from "./SidenavRoot";
 
 const ROLE_CONFIG = {
-  admin: {
-    label: "Administrador",
-    Icon: Shield,
-    tone: "bg-primary-50 text-primary-800 border-primary-200",
-  },
-  asociado: {
-    label: "Asociado",
-    Icon: Briefcase,
-    tone: "bg-cta-50 text-cta-700 border-cta-200",
-  },
-  cliente: {
-    label: "Cliente",
-    Icon: User,
-    tone: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  },
+  admin: { label: "Administrador", Icon: Shield },
+  asociado: { label: "Asociado", Icon: Briefcase },
+  cliente: { label: "Cliente", Icon: User },
 };
 
-function Sidenav({ brand, brandName, routes, ...rest }) {
-  const [controller, dispatch] = useMaterialUIController();
-  const { miniSidenav, transparentSidenav, whiteSidenav, darkMode } = controller;
-  const location = useLocation();
-  const { userProfile } = useAuth();
-  const collapseName = location.pathname.replace("/", "");
+// Mismo punto de corte que `xl` de Tailwind.
+const DESKTOP_QUERY = "(min-width: 1280px)";
 
-  const closeSidenav = () => setMiniSidenav(dispatch, true);
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia ? window.matchMedia(DESKTOP_QUERY).matches : true
+  );
 
   useEffect(() => {
-    function handleResize() {
-      setMiniSidenav(dispatch, window.innerWidth < 1200);
-      setTransparentSidenav(dispatch, window.innerWidth < 1200 ? false : transparentSidenav);
-      setWhiteSidenav(dispatch, window.innerWidth < 1200 ? false : whiteSidenav);
-    }
+    if (!window.matchMedia) return undefined;
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    const onChange = (e) => setIsDesktop(e.matches);
+    setIsDesktop(mql.matches);
+    if (mql.addEventListener) mql.addEventListener("change", onChange);
+    else mql.addListener(onChange);
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener("change", onChange);
+      else mql.removeListener(onChange);
+    };
+  }, []);
 
-    window.addEventListener("resize", handleResize);
-    handleResize();
-    return () => window.removeEventListener("resize", handleResize);
-  }, [dispatch, location, transparentSidenav, whiteSidenav]);
+  return isDesktop;
+}
+
+/**
+ * `miniSidenav` (contexto) significa "drawer cerrado" por debajo de xl. En escritorio la
+ * columna siempre está visible, así que navegar nunca la colapsa.
+ */
+function Sidenav({ brand, brandName, routes, color, ...rest }) {
+  const [controller, dispatch] = useMaterialUIController();
+  const { miniSidenav } = controller;
+  const { pathname } = useLocation();
+  const { userProfile } = useAuth();
+  const isDesktop = useIsDesktop();
+
+  const asideRef = useRef(null);
+  const openerRef = useRef(null);
+  const closeBtnRef = useRef(null);
+
+  const drawerOpen = !isDesktop && !miniSidenav;
+  const closed = !isDesktop && miniSidenav;
+
+  // 1) Sincroniza con el breakpoint: solo reacciona al cruzarlo (no a la navegación).
+  useLayoutEffect(() => {
+    setMiniSidenav(dispatch, !isDesktop);
+  }, [isDesktop, dispatch]);
+
+  // 2) Cierra el drawer móvil al navegar.
+  useEffect(() => {
+    if (!isDesktop) setMiniSidenav(dispatch, true);
+  }, [pathname, isDesktop, dispatch]);
+
+  const closeDrawer = useCallback(() => setMiniSidenav(dispatch, true), [dispatch]);
+
+  // 3) Drawer abierto: foco dentro, Escape, trampa de Tab y retorno del foco al cerrar.
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    openerRef.current = document.activeElement;
+    const raf = requestAnimationFrame(() => closeBtnRef.current?.focus({ preventScroll: true }));
+
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeDrawer();
+        return;
+      }
+      if (e.key !== "Tab" || !asideRef.current) return;
+      const items = Array.from(asideRef.current.querySelectorAll(FOCUSABLE));
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("keydown", onKeyDown);
+      const opener = openerRef.current;
+      if (opener && typeof opener.focus === "function" && document.contains(opener)) {
+        opener.focus({ preventScroll: true });
+      }
+    };
+  }, [drawerOpen, closeDrawer]);
 
   const role = ROLE_CONFIG[userProfile?.role] || ROLE_CONFIG.cliente;
   const RoleIcon = role.Icon;
-  const compactLabels = miniSidenav;
+  const onNavigate = isDesktop ? undefined : closeDrawer;
 
   const renderRoutes = routes.map(({ type, name, icon, title, key, route }) => {
     if (type === "collapse" && route) {
       return (
-        <li key={key} className="list-none">
-          <NavLink
-            to={route}
-            className="block no-underline"
-            aria-label={name}
-          >
-            <SidenavCollapse name={name} icon={icon} active={key === collapseName} />
-          </NavLink>
+        <li key={key}>
+          <SidenavCollapse name={name} icon={icon} to={route} onNavigate={onNavigate} />
         </li>
       );
     }
-
     if (type === "title") {
       return (
-        <p
-          key={key}
-          className={[
-            "px-3 mt-5 mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400",
-            compactLabels ? "xl:opacity-0 xl:h-0 xl:m-0" : "",
-          ].join(" ")}
-        >
+        <li key={key} role="presentation" className="px-2.5 pb-1 pt-4 text-xs font-medium text-fg-subtle">
           {title}
-        </p>
+        </li>
       );
     }
-
     if (type === "divider") {
-      return (
-        <div
-          key={key}
-          aria-hidden="true"
-          className="my-3 h-px w-full bg-slate-100"
-        />
-      );
+      return <li key={key} role="separator" aria-hidden="true" className="my-2 h-px bg-line" />;
     }
-
     return null;
   });
 
   return (
-    <SidenavRoot
-      {...rest}
-      variant="permanent"
-      ownerState={{ transparentSidenav, whiteSidenav, miniSidenav, darkMode }}
-    >
-      {/* Header brand */}
-      <div className="relative flex items-center gap-3 px-4 py-5 border-b border-slate-100">
-        {/* Close button mobile */}
-        <button
-          type="button"
-          onClick={closeSidenav}
-          aria-label="Cerrar menú"
-          className="absolute top-3 right-3 xl:hidden w-8 h-8 grid place-items-center rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
-        >
-          <X className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
-        </button>
+    <>
+      {/* Backdrop del drawer móvil */}
+      {drawerOpen && (
+        <div
+          aria-hidden="true"
+          className="fixed inset-0 z-40 bg-zinc-950/40 animate-fade-in xl:hidden"
+          onClick={closeDrawer}
+        />
+      )}
 
-        <NavLink
-          to="/"
-          className="flex items-center gap-3 flex-1 min-w-0 no-underline group"
-        >
-          {brand && (
-            <span className="shrink-0 w-11 h-11 rounded-xl overflow-hidden bg-white border border-slate-200 shadow-sm grid place-items-center">
-              <img src={brand} alt={brandName} className="w-9 h-9 object-contain" />
-            </span>
-          )}
-          <span
-            className={[
-              "min-w-0 transition-all duration-200",
-              compactLabels ? "xl:opacity-0 xl:max-w-0 xl:overflow-hidden" : "opacity-100",
-            ].join(" ")}
+      <SidenavRoot {...rest} ref={asideRef} closed={closed}>
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-4">
+          <Link
+            to="/"
+            className={cx(
+              "-ml-1 flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 py-1 no-underline",
+              focusRing
+            )}
           >
-            <span className="block text-[15px] font-semibold font-heading text-primary-900 leading-tight tracking-tight">
+            {brand && <img src={brand} alt="" className="h-6 w-6 shrink-0 object-contain" />}
+            <span className="truncate text-sm font-semibold tracking-tight text-fg-strong">
               {brandName}
             </span>
-            <span className="block text-[11px] text-slate-500 mt-0.5">
-              Gestión de canchas
-            </span>
-          </span>
-        </NavLink>
-      </div>
-
-      {/* Section label */}
-      <div
-        className={[
-          "px-4 pt-4 pb-1",
-          compactLabels ? "xl:hidden" : "",
-        ].join(" ")}
-      >
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-          Navegación
-        </p>
-      </div>
-
-      {/* Nav items */}
-      <nav
-        aria-label="Menú principal"
-        className="flex-1 overflow-y-auto px-3 pb-4"
-      >
-        <ul className="flex flex-col gap-0.5 m-0 p-0">{renderRoutes}</ul>
-      </nav>
-
-      {/* Footer: user role pill */}
-      {userProfile && (
-        <div className="px-4 pb-4 pt-3 border-t border-slate-100">
-          <div
-            className={[
-              "rounded-xl border bg-white p-3 flex items-center gap-3 shadow-sm",
-              compactLabels ? "xl:p-2 xl:justify-center" : "",
-              "border-slate-200",
-            ].join(" ")}
+          </Link>
+          <IconButton
+            ref={closeBtnRef}
+            label="Cerrar menú de navegación"
+            size="lg"
+            className="xl:hidden"
+            onClick={closeDrawer}
           >
-            <span
-              className={[
-                "shrink-0 w-9 h-9 rounded-lg grid place-items-center border",
-                role.tone,
-              ].join(" ")}
-            >
-              <RoleIcon className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
-            </span>
-            <div
-              className={[
-                "min-w-0 flex-1 transition-all duration-200",
-                compactLabels ? "xl:hidden" : "block",
-              ].join(" ")}
-            >
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400 leading-none">
-                Rol activo
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900 truncate">
-                {role.label}
-              </p>
+            <X aria-hidden />
+          </IconButton>
+        </div>
+
+        <nav aria-label="Menú principal" className="flex-1 overflow-y-auto px-3 py-3">
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">{renderRoutes}</ul>
+        </nav>
+
+        {userProfile && (
+          <div className="shrink-0 border-t border-line p-3">
+            <div className="flex items-center gap-2.5 rounded-md border border-line bg-zinc-50 px-2.5 py-2">
+              <span
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-line bg-white text-fg-muted"
+                aria-hidden="true"
+              >
+                <RoleIcon className="h-3.5 w-3.5" strokeWidth={1.75} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs leading-4 text-fg-subtle">Rol activo</p>
+                <p className="truncate text-[13px] font-medium leading-4 text-fg-strong">{role.label}</p>
+              </div>
             </div>
           </div>
-
-          <p
-            className={[
-              "mt-3 text-[10px] text-slate-400 text-center",
-              compactLabels ? "xl:hidden" : "",
-            ].join(" ")}
-          >
-            GoalTime · v2.2
-          </p>
-        </div>
-      )}
-    </SidenavRoot>
+        )}
+      </SidenavRoot>
+    </>
   );
 }
 
 Sidenav.defaultProps = {
   brand: "",
+  color: undefined,
 };
 
 Sidenav.propTypes = {

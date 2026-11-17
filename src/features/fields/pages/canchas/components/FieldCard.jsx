@@ -1,180 +1,174 @@
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Button, StatusPill } from "shared/components/ui";
-import { MapPin, Banknote, Clock, Pencil, Heart, Trophy } from "lucide-react";
+import { Banknote, Clock, Heart, ImageOff, MapPin, Pencil } from "lucide-react";
+import { Button, IconButton, StatusPill, cx } from "shared/components/ui";
+import { formatCurrency } from "shared/utils/format";
+import { getFieldStatusMeta } from "shared/utils/reservationStatus";
 
-const STATUS_TONES = {
-  approved: "success",
-  pending: "warning",
-  rejected: "danger",
-  disabled: "neutral",
-};
-
-const FieldCard = forwardRef(
-  (
-    {
-      field,
-      userProfile,
-      favoriteIds,
-      togglingFavorite,
-      statusMap,
-      onEdit,
-      onToggleFavorite,
-      onAction,
-      loadingAction,
-    },
-    externalRef
-  ) => {
-    const isAdmin = userProfile?.role === "admin";
-    const isClient = userProfile?.role === "cliente";
-    const isFav = favoriteIds?.includes(field.id);
-
-    return (
-      <article
-        ref={externalRef}
-        className="field-card group relative flex flex-col overflow-hidden rounded-xl bg-white border border-slate-200 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30"
-      >
-        <div className="relative aspect-[16/9] bg-gradient-to-br from-primary-50 to-secondary/15">
-          {field.imageUrl ? (
-            <img
-              src={field.imageUrl}
-              alt={field.name}
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-primary/40">
-              <Trophy className="h-16 w-16" strokeWidth={1.25} aria-hidden />
-            </div>
-          )}
-
-          <div className="absolute inset-x-0 top-0 p-3 flex items-start justify-between gap-2">
-            {isAdmin ? (
-              <button
-                type="button"
-                onClick={() => onEdit(field)}
-                className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-white/95 backdrop-blur-sm text-primary shadow-sm transition-all duration-200 hover:bg-white hover:shadow-md focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/30"
-                aria-label="Editar cancha"
-              >
-                <Pencil className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
-              </button>
-            ) : (
-              <span />
-            )}
-
-            {isAdmin && (
-              <StatusPill tone={STATUS_TONES[field.status] || "neutral"} size="sm">
-                {statusMap?.[field.status]?.label ?? field.status}
-              </StatusPill>
-            )}
-
-            {isClient && (
-              <button
-                type="button"
-                onClick={(e) => onToggleFavorite(field.id, e)}
-                disabled={togglingFavorite === field.id}
-                className={[
-                  "inline-flex items-center justify-center w-9 h-9 rounded-lg shadow-sm transition-all duration-200",
-                  "bg-white/95 backdrop-blur-sm hover:bg-white hover:shadow-md",
-                  "focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/30",
-                  togglingFavorite === field.id ? "opacity-60 cursor-wait" : "",
-                ].join(" ")}
-                aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
-              >
-                {isFav ? (
-                  <Heart className="h-[18px] w-[18px] fill-rose-500 text-rose-500" strokeWidth={2} aria-hidden />
-                ) : (
-                  <Heart className="h-[18px] w-[18px] text-slate-500" strokeWidth={2} aria-hidden />
-                )}
-              </button>
-            )}
-          </div>
+/** Imagen de portada 16:9 con placeholder neutro si falta o falla. */
+export function FieldCover({ src, alt, className = "" }) {
+  const [failedSrc, setFailedSrc] = useState(null);
+  const showImage = Boolean(src) && failedSrc !== src;
+  return (
+    <div className={cx("relative aspect-[16/9] overflow-hidden bg-zinc-100", className)}>
+      {showImage ? (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={() => setFailedSrc(src)}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center text-fg-faint">
+          <ImageOff className="h-8 w-8" strokeWidth={1.5} aria-hidden />
         </div>
+      )}
+    </div>
+  );
+}
 
-        <div className="flex-1 flex flex-col p-5">
-          <h3 className="font-semibold font-heading text-slate-900 text-lg leading-tight mb-3 line-clamp-1">
+FieldCover.propTypes = { src: PropTypes.string, alt: PropTypes.string, className: PropTypes.string };
+
+const FieldCard = forwardRef(function FieldCard(
+  {
+    field,
+    role,
+    isFavorite = false,
+    favoriteBusy = false,
+    isOwn = false,
+    highlighted = false,
+    actionsDisabled = false,
+    onOpen,
+    onReserve,
+    onToggleFavorite,
+    onEdit,
+    onApprove,
+    onReject,
+  },
+  ref
+) {
+  const isAdmin = role === "admin";
+  const isClient = role === "cliente";
+  const status = getFieldStatusMeta(field.status);
+  const price = Number(field.pricePerHour);
+
+  return (
+    <article
+      ref={ref}
+      data-field-id={field.id}
+      className={cx(
+        "flex flex-col overflow-hidden rounded-lg border bg-white transition-colors duration-150",
+        highlighted ? "border-primary-500 ring-2 ring-primary-500/30" : "border-line hover:border-line-strong"
+      )}
+    >
+      <div className="relative border-b border-line">
+        <FieldCover src={field.imageUrl} alt={field.name || "Cancha"} />
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2.5">
+          {isAdmin ? (
+            <StatusPill tone={status.tone} size="sm" dot>
+              {status.label}
+            </StatusPill>
+          ) : isOwn ? (
+            <StatusPill tone="info" size="sm">
+              Tu cancha
+            </StatusPill>
+          ) : (
+            <span />
+          )}
+          {isAdmin && (
+            <IconButton label={`Editar ${field.name || "cancha"}`} variant="secondary" onClick={() => onEdit?.(field)}>
+              <Pencil />
+            </IconButton>
+          )}
+          {isClient && (
+            <IconButton
+              label={isFavorite ? "Quitar de favoritas" : "Agregar a favoritas"}
+              variant="secondary"
+              aria-pressed={isFavorite}
+              disabled={favoriteBusy}
+              onClick={() => onToggleFavorite?.(field.id)}
+            >
+              <Heart className={isFavorite ? "fill-red-500 text-red-500" : undefined} />
+            </IconButton>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-3 p-4">
+        <div className="min-w-0">
+          <h3 className="truncate text-sm font-semibold text-fg-strong" title={field.name}>
             {field.name || "Sin nombre"}
           </h3>
-
-          <div className="space-y-2 mb-5 text-sm text-slate-600">
-            {field.address && (
-              <div className="flex items-center gap-2 truncate">
-                <MapPin className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
-                <span className="truncate">{field.address}</span>
-              </div>
-            )}
-            {field.pricePerHour && (
-              <div className="flex items-center gap-2 font-semibold text-slate-900">
-                <Banknote className="h-4 w-4 shrink-0 text-cta-600" strokeWidth={2} aria-hidden />
-                <span>${field.pricePerHour}</span>
-                <span className="text-xs font-normal text-slate-500">/ hora</span>
-              </div>
-            )}
-            {field.openingTime && field.closingTime && (
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={2} aria-hidden />
-                <span>
-                  {field.openingTime} - {field.closingTime}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="mt-auto">
-            {isAdmin && field.status === "pending" ? (
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="primary"
-                  size="md"
-                  fullWidth
-                  disabled={loadingAction}
-                  onClick={() => onAction(field, "approve")}
-                >
-                  Aprobar
-                </Button>
-                <Button
-                  variant="danger"
-                  size="md"
-                  fullWidth
-                  disabled={loadingAction}
-                  onClick={() => onAction(field, "reject")}
-                >
-                  Rechazar
-                </Button>
-              </div>
-            ) : (
-              <Button
-                variant={isClient ? "primary" : "secondary"}
-                size="md"
-                fullWidth
-                disabled={!isClient}
-                onClick={() => onAction(field, "reserve")}
-              >
-                {isClient
-                  ? "Reservar ahora"
-                  : isAdmin
-                  ? "Ver detalles"
-                  : "Ver disponibilidad"}
-              </Button>
-            )}
-          </div>
+          <p className="mt-1 flex items-center gap-1.5 text-[13px] text-fg-muted">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-hidden />
+            <span className="truncate">{field.address || "Sin dirección"}</span>
+          </p>
         </div>
-      </article>
-    );
-  }
-);
 
-FieldCard.displayName = "FieldCard";
+        <dl className="grid grid-cols-2 gap-2 border-t border-line-subtle pt-3 text-[13px]">
+          <div className="min-w-0">
+            <dt className="flex items-center gap-1 text-xs text-fg-subtle">
+              <Banknote className="h-3.5 w-3.5" aria-hidden />
+              Por hora
+            </dt>
+            <dd className="tabular mt-0.5 font-medium text-fg-strong">
+              {Number.isFinite(price) && price > 0 ? formatCurrency(price) : "—"}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="flex items-center gap-1 text-xs text-fg-subtle">
+              <Clock className="h-3.5 w-3.5" aria-hidden />
+              Horario
+            </dt>
+            <dd className="tabular mt-0.5 font-medium text-fg-strong">
+              {field.openingTime && field.closingTime ? `${field.openingTime} – ${field.closingTime}` : "—"}
+            </dd>
+          </div>
+        </dl>
+
+        <div className="mt-auto flex gap-2 pt-1">
+          {isAdmin && field.status === "pending" ? (
+            <>
+              <Button type="button" size="sm" variant="secondary" fullWidth disabled={actionsDisabled} onClick={() => onReject?.(field)}>
+                Rechazar
+              </Button>
+              <Button type="button" size="sm" fullWidth disabled={actionsDisabled} onClick={() => onApprove?.(field)}>
+                Aprobar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" size="sm" variant="secondary" fullWidth onClick={() => onOpen?.(field)}>
+                Ver detalles
+              </Button>
+              {isClient && (
+                <Button type="button" size="sm" fullWidth onClick={() => onReserve?.(field)}>
+                  Reservar
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+});
 
 FieldCard.propTypes = {
   field: PropTypes.object.isRequired,
-  userProfile: PropTypes.object,
-  favoriteIds: PropTypes.array,
-  togglingFavorite: PropTypes.string,
-  statusMap: PropTypes.object,
-  onEdit: PropTypes.func,
+  role: PropTypes.string,
+  isFavorite: PropTypes.bool,
+  favoriteBusy: PropTypes.bool,
+  isOwn: PropTypes.bool,
+  highlighted: PropTypes.bool,
+  actionsDisabled: PropTypes.bool,
+  onOpen: PropTypes.func,
+  onReserve: PropTypes.func,
   onToggleFavorite: PropTypes.func,
-  onAction: PropTypes.func.isRequired,
-  loadingAction: PropTypes.bool,
+  onEdit: PropTypes.func,
+  onApprove: PropTypes.func,
+  onReject: PropTypes.func,
 };
 
 export default FieldCard;

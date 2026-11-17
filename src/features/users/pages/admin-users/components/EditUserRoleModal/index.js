@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Shield, User, Briefcase, Save } from "lucide-react";
-import { Modal, Button, SectionCard, StatusPill } from "shared/components/ui";
+import { Shield, User, Briefcase } from "lucide-react";
+import { Avatar, Modal, Button, StatusPill, cx } from "shared/components/ui";
 
 const ROLE_OPTIONS = [
   {
@@ -9,161 +9,122 @@ const ROLE_OPTIONS = [
     label: "Cliente",
     description: "Puede reservar canchas y ver sus reservas.",
     Icon: User,
-    tone: "info",
   },
   {
     value: "asociado",
     label: "Asociado",
     description: "Gestiona sus canchas, horarios y reservas.",
     Icon: Briefcase,
-    tone: "warning",
   },
   {
     value: "admin",
     label: "Administrador",
-    description: "Control total: usuarios, canchas, moderación.",
+    description: "Control total: usuarios, canchas y moderación.",
     Icon: Shield,
-    tone: "danger",
   },
 ];
+
+const ROLE_LABEL = Object.fromEntries(ROLE_OPTIONS.map((o) => [o.value, o.label]));
 
 function EditUserRoleModal({ open, onClose, onSubmit, loading, user }) {
   const [newRole, setNewRole] = useState("cliente");
 
   useEffect(() => {
-    if (user && open) {
-      setNewRole(user.role || "cliente");
-    }
+    if (user && open) setNewRole(user.role || "cliente");
   }, [user, open]);
 
   if (!user) return null;
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (!loading) onSubmit(user, newRole);
+    if (!loading && newRole !== (user.role || "cliente")) onSubmit(user, newRole);
   };
 
-  const isUnchanged = newRole === user.role;
+  const isUnchanged = newRole === (user.role || "cliente");
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
-      size="lg"
+      onClose={loading ? undefined : onClose}
+      closeOnBackdrop={!loading}
+      closeOnEsc={!loading}
+      size="md"
       eyebrow="Administración · Usuarios"
       title="Editar rol del usuario"
-      subtitle="Asigna los permisos del usuario en GoalTime. El cambio aplica inmediatamente al guardar."
-      icon={<Shield className="h-[22px] w-[22px] shrink-0" strokeWidth={2} aria-hidden />}
+      subtitle="El cambio se aplica de inmediato al guardar."
+      icon={<Shield className="h-4 w-4" strokeWidth={1.75} aria-hidden />}
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={loading}>
             Cancelar
           </Button>
-          <Button
-            type="submit"
-            form="edit-role-form"
-            variant="primary"
-            loading={loading}
-            disabled={loading || isUnchanged}
-          >
-            <Save className="h-[18px] w-[18px] shrink-0" strokeWidth={2} aria-hidden />
+          <Button type="submit" form="edit-role-form" loading={loading} disabled={isUnchanged}>
             Guardar rol
           </Button>
         </>
       }
     >
-      <form id="edit-role-form" onSubmit={handleSubmit} className="space-y-6">
-        <SectionCard
-          eyebrow="Cuenta"
-          title="Datos del usuario"
-          padding="p-5"
-          className="bg-slate-50/60"
-        >
-          <div className="flex items-center gap-4">
-            {user.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt={user.name || "Usuario"}
-                className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
-              />
-            ) : (
-              <span
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white shadow-sm"
-                style={{ background: "linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%)" }}
-              >
-                {user.name ? user.name[0].toUpperCase() : "?"}
-              </span>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-base font-semibold font-heading text-slate-900 truncate">
-                {user.name || "Usuario"}
-              </p>
-              <p className="text-sm text-slate-500 truncate">{user.email || "Sin correo"}</p>
-              <div className="mt-2">
-                <StatusPill tone="neutral" size="sm" dot>
-                  Rol actual: {user.role || "cliente"}
-                </StatusPill>
-              </div>
-            </div>
+      <form id="edit-role-form" onSubmit={handleSubmit} className="space-y-5">
+        <div className="flex items-center gap-3 rounded-lg border border-line bg-zinc-50 p-3">
+          <Avatar src={user.photoURL} name={user.name || user.email} size="lg" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-fg-strong">{user.name || "Usuario"}</p>
+            <p className="truncate text-[13px] text-fg-muted">{user.email || "Sin correo"}</p>
+            <StatusPill tone="neutral" size="sm" className="mt-1.5">
+              Rol actual: {ROLE_LABEL[user.role] || user.role || "Cliente"}
+            </StatusPill>
           </div>
-        </SectionCard>
+        </div>
 
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-3">
-            Selecciona un rol
-          </p>
-          <div className="grid grid-cols-1 gap-3">
+        <fieldset className="m-0 min-w-0 border-0 p-0" disabled={loading}>
+          <legend className="mb-2 p-0 text-[13px] font-medium text-fg">Selecciona un rol</legend>
+          <div className="space-y-2">
             {ROLE_OPTIONS.map((opt) => {
-              const active = newRole === opt.value;
+              const checked = newRole === opt.value;
+              const id = `edit-role-${opt.value}`;
               return (
-                <button
+                <label
                   key={opt.value}
-                  type="button"
-                  onClick={() => setNewRole(opt.value)}
-                  disabled={loading}
-                  className={[
-                    "group flex items-start gap-4 text-left rounded-xl border px-4 py-4 transition-all duration-200 cursor-pointer",
-                    "focus:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/20",
-                    active
-                      ? "border-primary bg-primary-50/60 shadow-sm"
-                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
-                  ].join(" ")}
+                  htmlFor={id}
+                  className={cx(
+                    "flex cursor-pointer items-start gap-3 rounded-md border px-3.5 py-3 transition-colors duration-150",
+                    "focus-within:ring-2 focus-within:ring-primary-500/40",
+                    checked
+                      ? "border-primary-500 bg-primary-50/50"
+                      : "border-line bg-white hover:border-line-strong hover:bg-zinc-50"
+                  )}
                 >
-                  <span
-                    className={[
-                      "shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
-                      active
-                        ? "bg-primary text-white"
-                        : "bg-slate-100 text-slate-500 group-hover:bg-slate-200",
-                    ].join(" ")}
-                  >
-                    <opt.Icon className="h-5 w-5" strokeWidth={2} aria-hidden />
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold font-heading text-slate-900">
-                        {opt.label}
-                      </span>
-                      {active && (
-                        <StatusPill tone="info" size="sm">
-                          Seleccionado
-                        </StatusPill>
-                      )}
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500 leading-relaxed">{opt.description}</p>
-                  </div>
-                  <span
-                    aria-hidden="true"
-                    className={[
-                      "mt-1 w-4 h-4 rounded-full border-2 transition-colors",
-                      active ? "border-primary bg-primary" : "border-slate-300 bg-white",
-                    ].join(" ")}
+                  <input
+                    id={id}
+                    type="radio"
+                    name="user-role"
+                    value={opt.value}
+                    checked={checked}
+                    onChange={() => setNewRole(opt.value)}
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary-600"
                   />
-                </button>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-fg-strong">
+                      <opt.Icon className="h-3.5 w-3.5 text-fg-subtle" aria-hidden />
+                      {opt.label}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] leading-5 text-fg-muted">
+                      {opt.description}
+                    </span>
+                  </span>
+                </label>
               );
             })}
           </div>
-        </div>
+          {!isUnchanged && (
+            <p className="mt-3 text-xs text-fg-muted">
+              {newRole === "admin" || ROLE_OPTIONS.findIndex((o) => o.value === newRole) <
+                ROLE_OPTIONS.findIndex((o) => o.value === (user.role || "cliente"))
+                ? "Este cambio pedirá una confirmación adicional."
+                : "El nuevo rol se aplica en cuanto guardes."}
+            </p>
+          )}
+        </fieldset>
       </form>
     </Modal>
   );

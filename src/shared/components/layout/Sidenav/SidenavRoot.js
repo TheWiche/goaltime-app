@@ -1,36 +1,39 @@
+import { forwardRef } from "react";
 import PropTypes from "prop-types";
+import { cx } from "shared/components/ui";
 
 /**
- * Drawer lateral sin MUI: aside fijo + ancho responsive (desktop mini / full).
+ * Contenedor lateral. En >= xl es una columna fija de 240px; por debajo es un drawer
+ * que se oculta con transform + visibility (y `inert` cuando está cerrado).
  */
-function SidenavRoot({ children, ownerState, ...rest }) {
-  const { miniSidenav } = ownerState;
-
+const SidenavRoot = forwardRef(function SidenavRoot({ children, closed, ...rest }, ref) {
   return (
     <aside
+      id="app-sidenav"
+      ref={ref}
+      aria-label="Navegación principal"
+      aria-hidden={closed ? true : undefined}
+      inert={closed ? "" : undefined}
       {...rest}
-      className={[
-        "fixed left-0 top-0 z-[1100] flex h-screen flex-col border-r border-slate-200 bg-white",
-        "transition-[width,transform] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
-        "w-[280px] max-w-[100vw]",
-        miniSidenav
-          ? "max-xl:pointer-events-none max-xl:-translate-x-full xl:w-24 xl:translate-x-0 xl:overflow-x-hidden"
-          : "translate-x-0 xl:w-[280px]",
-      ].join(" ")}
+      className={cx(
+        "fixed inset-y-0 left-0 z-[41] flex h-dvh w-60 max-w-[85vw] flex-col border-r border-line bg-white",
+        "transition-[transform,visibility] duration-200 ease-out xl:translate-x-0 xl:visible",
+        closed ? "max-xl:invisible max-xl:-translate-x-full" : "translate-x-0"
+      )}
     >
       {children}
     </aside>
   );
-}
+});
 
 SidenavRoot.propTypes = {
   children: PropTypes.node,
-  ownerState: PropTypes.shape({
-    miniSidenav: PropTypes.bool,
-    transparentSidenav: PropTypes.bool,
-    whiteSidenav: PropTypes.bool,
-    darkMode: PropTypes.bool,
-  }).isRequired,
+  closed: PropTypes.bool,
+};
+
+SidenavRoot.defaultProps = {
+  children: null,
+  closed: false,
 };
 
 export default SidenavRoot;

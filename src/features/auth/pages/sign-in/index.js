@@ -6,7 +6,6 @@ import PasswordField from "features/auth/components/PasswordField";
 import SocialButtons from "features/auth/components/SocialButtons";
 import { getAuthErrorMessage, getAuthErrorType } from "features/auth/utils/authErrors";
 import { loginUser, signInWithGoogle, signInWithFacebook } from "shared/services/firebaseService";
-import { getHomePathForRole } from "shared/utils/url";
 
 const CREDENTIAL_ERRORS = ["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"];
 
@@ -32,8 +31,6 @@ function SignIn() {
   const notify = (code) =>
     setToast({ open: true, message: getAuthErrorMessage(code), type: getAuthErrorType(code) });
 
-  const goHome = (profile) => navigate(getHomePathForRole(profile?.role), { replace: true });
-
   const handleEmailChange = (e) => {
     setEmail(e.target.value);
     setFailedAttempts(0);
@@ -44,9 +41,9 @@ function SignIn() {
     if (busy) return;
     setBusy("email");
     try {
-      const profile = await loginUser(email.trim(), password, rememberMe);
+      // Al iniciar sesión, GuestRoute redirige al home del rol en cuanto carga el perfil.
+      await loginUser(email.trim(), password, rememberMe);
       setFailedAttempts(0);
-      goHome(profile);
     } catch (error) {
       if (error.code === "auth/email-not-verified") {
         navigate("/authentication/verify-email", { replace: true });
@@ -64,7 +61,7 @@ function SignIn() {
     setBusy(provider);
     try {
       const signIn = provider === "google" ? signInWithGoogle : signInWithFacebook;
-      goHome(await signIn());
+      await signIn();
     } catch (error) {
       notify(error.code);
     } finally {
