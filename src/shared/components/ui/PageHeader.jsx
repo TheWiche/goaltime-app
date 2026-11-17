@@ -1,40 +1,31 @@
 import PropTypes from "prop-types";
+import { cx } from "./cx";
 
-function PageHeader({
-  eyebrow,
-  title,
-  subtitle,
-  actions,
-  meta,
-  className = "",
-}) {
+/** Cabecera de página: título, subtítulo, meta (badges) y acciones a la derecha. */
+function PageHeader({ eyebrow, title, subtitle, actions, meta, bordered = false, className = "" }) {
   return (
     <header
-      className={[
-        "flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between",
-        "mb-6",
-        className,
-      ].join(" ")}
+      className={cx(
+        "mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between",
+        bordered && "border-b border-line pb-5",
+        className
+      )}
     >
       <div className="min-w-0">
         {eyebrow && (
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary mb-1.5">
-            {eyebrow}
-          </p>
+          <p className="mb-1 text-xs font-medium text-fg-subtle">{eyebrow}</p>
         )}
         {title && (
-          <h1 className="text-2xl sm:text-3xl font-semibold font-heading text-slate-900 tracking-tight leading-tight">
+          <h1 className="text-2xl font-semibold leading-tight tracking-tight text-fg-strong">
             {title}
           </h1>
         )}
         {subtitle && (
-          <p className="mt-2 text-sm sm:text-[15px] text-slate-500 max-w-2xl leading-relaxed">
-            {subtitle}
-          </p>
+          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-fg-muted">{subtitle}</p>
         )}
-        {meta && <div className="mt-3 flex flex-wrap gap-2 items-center">{meta}</div>}
+        {meta && <div className="mt-3 flex flex-wrap items-center gap-2">{meta}</div>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </header>
   );
 }
@@ -45,6 +36,7 @@ PageHeader.propTypes = {
   subtitle: PropTypes.node,
   actions: PropTypes.node,
   meta: PropTypes.node,
+  bordered: PropTypes.bool,
   className: PropTypes.string,
 };
 

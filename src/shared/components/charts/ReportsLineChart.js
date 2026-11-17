@@ -12,83 +12,43 @@ import {
   Legend,
   Filler,
 } from "chart.js";
-import { Clock } from "lucide-react";
-import { MDBox, MDTypography } from "shared/components/md-shims";
+import ChartFrame from "./ChartFrame";
+import { baseOptions, resolveColor, withAlpha } from "./chartTheme";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
+/** Línea fina (1.5px), sin puntos salvo en hover, relleno plano muy sutil. */
 function ReportsLineChart({ color, title, description, date, chart }) {
+  const hex = resolveColor(color);
+
   const chartData = useMemo(
     () => ({
       labels: chart.labels || [],
       datasets: [
         {
-          label: chart.datasets.label || "Data",
-          data: chart.datasets.data || [],
-          borderColor: "rgba(25, 212, 112, 1)",
-          backgroundColor: "rgba(25, 212, 112, 0.2)",
+          label: chart.datasets?.label || "Data",
+          data: chart.datasets?.data || [],
+          borderColor: hex,
+          backgroundColor: withAlpha(hex, 0.06),
+          borderWidth: 1.5,
           fill: true,
-          tension: 0.4,
-          pointRadius: 3,
-          pointBackgroundColor: "rgba(25, 212, 112, 1)",
+          tension: 0.25,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          pointHoverBorderWidth: 0,
+          pointBackgroundColor: hex,
         },
       ],
     }),
-    [chart]
+    [chart, hex]
   );
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: { enabled: true },
-    },
-    scales: {
-      y: { beginAtZero: true, grid: { display: true, color: "rgba(0,0,0,0.05)" } },
-      x: { grid: { display: false } },
-    },
-  };
+  const chartOptions = useMemo(() => baseOptions(), []);
 
   return (
-    <MDBox>
-      <MDBox
-        variant="gradient"
-        bgColor={color}
-        borderRadius="lg"
-        coloredShadow={color}
-        py={2}
-        pr={0.5}
-        height="12.5rem"
-        mb={2}
-      >
-        <Line data={chartData} options={chartOptions} />
-      </MDBox>
-      <MDBox>
-        <MDTypography variant="h6" textTransform="capitalize" mb={1}>
-          {title}
-        </MDTypography>
-        <MDTypography component="div" variant="button" color="text" fontWeight="light" mb={1}>
-          {description}
-        </MDTypography>
-        <hr className="my-2 border-slate-200" />
-        <div className="flex items-center gap-1.5">
-          <Clock className="h-4 w-4 shrink-0 text-slate-500" strokeWidth={2} aria-hidden />
-          <MDTypography variant="button" color="text" fontWeight="light">
-            {date}
-          </MDTypography>
-        </div>
-      </MDBox>
-    </MDBox>
+    <ChartFrame title={title} description={description} date={date}>
+      <Line data={chartData} options={chartOptions} aria-label={title || chart.datasets?.label || "Gráfico de líneas"} role="img" />
+    </ChartFrame>
   );
 }
 

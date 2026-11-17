@@ -1,30 +1,57 @@
 rules_version = '2';
-// Firebase Storage Security Rules
+
+// GoalTime - Firebase Storage Security Rules
+// - profile-photos/{userId}/{file}: solo el propio usuario escribe; lectura autenticada.
+// - fields/{fieldId}/{file}: escribe el asociado dueño de la cancha o un admin
+//   (rol leído de Firestore users/{uid}.role); lectura pública (fotos de canchas).
+// - Imágenes: < 5 MB y image/png | image/jpeg | image/webp.
+// - Todo lo demás: denegado.
 service firebase.storage {
   match /b/{bucket}/o {
-    // Reglas para fotos de perfil
-    match /profile-photos/{userId}/{fileName} {
-      // Permitir lectura a cualquier usuario autenticado
-      allow read: if request.auth != null;
-      
-      // Permitir escritura (upload/update) solo al propietario
-      // Validar tamaño máximo (5MB) y tipo de archivo (imagen)
-      allow write: if request.auth != null 
-        && request.auth.uid == userId
-        && request.resource.size < 5 * 1024 * 1024  // Máximo 5MB
-        && request.resource.contentType.matches('image/.*');
-      
-      // Permitir eliminación solo al propietario
-      allow delete: if request.auth != null && request.auth.uid == userId;
+
+    function signedIn() {
+      return request.auth != null;
     }
-    
-    // Reglas para otras imágenes (canchas, etc.)
+
+    function isValidImage() {
+      return request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp)');
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return userDoc() != null ? userDoc().data.get('role', 'cliente') : 'cliente';
+    }
+
+    function isAdmin() {
+      return signedIn() && role() == 'admin';
+    }
+
+    function ownsField(fieldId) {
+      return signedIn()
+        && role() == 'asociado'
+        && firestore.get(/databases/(default)/documents/canchas/$(fieldId)).data.ownerId
+           == request.auth.uid;
+    }
+
+    match /profile-photos/{userId}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId && isValidImage();
+      allow delete: if signedIn() && request.auth.uid == userId;
+    }
+
+    match /fields/{fieldId}/{fileName} {
+      allow read: if true;
+      allow create, update: if (isAdmin() || ownsField(fieldId)) && isValidImage();
+      allow delete: if isAdmin() || ownsField(fieldId);
+    }
+
     match /{allPaths=**} {
-      // Permitir lectura a usuarios autenticados
-      allow read: if request.auth != null;
-      // Permitir escritura a usuarios autenticados
-      allow write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
-

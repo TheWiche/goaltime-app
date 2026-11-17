@@ -2,34 +2,110 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * GoalTime — tokens del sistema de diseño (modo claro).
+ * Referenciados desde tailwind.config.js. Ver design-system/goaltime/MASTER.md.
+ */
+:root {
+  /* Radios (angular, máx. 8px) */
+  --radius-sm: 2px;
+  --radius: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Bordes */
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --border-subtle: #f4f4f5;
+
+  /* Superficies / texto */
+  --canvas: #fafafa;
+  --surface: #ffffff;
+  --fg: #18181b;
+  --fg-strong: #0a0a0a;
+  --fg-muted: #52525b;
+  --accent: #2563eb;
+  --cta: #f97316;
+
+  /* Sombras mínimas (neutras, nunca azules) */
+  --shadow-xs: 0 1px 2px 0 rgba(10, 10, 10, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(10, 10, 10, 0.05), 0 1px 3px 0 rgba(10, 10, 10, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(10, 10, 10, 0.08), 0 2px 4px -2px rgba(10, 10, 10, 0.04);
+  --shadow-lg: 0 16px 40px -12px rgba(10, 10, 10, 0.18), 0 4px 8px -4px rgba(10, 10, 10, 0.06);
+
+  color-scheme: light;
+}
+
 @layer base {
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv11", "ss01";
   }
 
   body {
-    @apply bg-surface text-dark font-sans;
+    @apply bg-canvas text-fg font-sans text-sm leading-normal;
   }
 
-  * {
-    box-sizing: border-box;
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold tracking-tight;
+  }
+
+  ::selection {
+    @apply bg-primary-100 text-fg-strong;
+  }
+
+  /* Foco visible por defecto para elementos interactivos sin estilo propio */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
 @layer components {
-  /* Scrollbar personalizado */
+  /* font-heading = Inter 600 (las utilidades font-* posteriores lo sobrescriben) */
+  .font-heading {
+    font-weight: 600;
+    letter-spacing: -0.011em;
+  }
+
+  /* Números tabulares para tablas y KPIs */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Scrollbar discreto, rectangular */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-gray-100;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-400 rounded-full;
+    background-color: #d4d4d8;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: var(--radius-sm);
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-500;
+    background-color: #a1a1aa;
   }
 }

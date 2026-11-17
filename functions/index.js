@@ -1,978 +1,776 @@
 // functions/index.js
+//
+// Cloud Functions de GoalTime.
+// - Autorización: el rol se lee SIEMPRE de Firestore users/{uid}.role (no de custom claims).
+// - Fallo cerrado: cualquier error al comprobar permisos → 403/500, nunca se continúa.
+// - CORS con lista blanca de orígenes.
+// - Los emails se generan en el servidor con datos de Firestore y todo valor dinámico
+//   se escapa con escapeHtml().
+// - No se registran datos personales (emails, tokens, claves) en los logs.
 
 const functions = require("firebase-functions");
 const { onRequest } = require("firebase-functions/v2/https");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
+const logger = require("firebase-functions/logger");
 const admin = require("firebase-admin");
-// 👇 Importa el middleware de CORS
-const cors = require("cors")({ origin: true });
 
 admin.initializeApp();
 
-// 👇 Definir el secret de SendGrid para Firebase Functions v2
-const sendgridApiKey = defineSecret("SENDGRID_API_KEY");
+const db = admin.firestore();
+const FieldValue = admin.firestore.FieldValue;
 
-// 👇 Configuración de SendGrid
-// IMPORTANTE: La API Key ahora se obtiene de Firebase Secrets para mayor seguridad
-// Para configurar: firebase functions:secrets:set SENDGRID_API_KEY
+// ---------------------------------------------------------------------------
+// Configuración
+// ---------------------------------------------------------------------------
+
+// Secret de SendGrid: firebase functions:secrets:set SENDGRID_API_KEY
+const sendgridApiKey = defineSecret("SENDGRID_API_KEY");
 const SENDGRID_FROM_EMAIL = "noreply@goaltime.site";
 
-// 👇 Cambiamos de onCall a onRequest
-exports.createUser = functions.https.onRequest(async (request, response) => {
-  // 1. Aplica CORS para permitir llamadas desde tu app React
-  cors(request, response, async () => {
-    // 2. Verifica que sea un método POST
-    if (request.method !== "POST") {
-      return response.status(405).send({ error: "Method Not Allowed" });
-    }
+const ALLOWED_ORIGINS = [
+  "https://goaltime.site",
+  "https://www.goaltime.site",
+  "http://localhost:3000",
+];
 
-    // 3. Verifica manualmente el token de autenticación
-    let decodedToken;
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-
-    if (!idToken) {
-      return response.status(401).send({ error: "Unauthorized: No token provided." });
-    }
-
-    try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-    } catch (error) {
-      console.error("Error verifying Firebase ID token:", error);
-      return response.status(401).send({ error: "Unauthorized: Invalid token." });
-    }
-
-    // 4. Verifica el rol de admin desde el token decodificado
-    if (decodedToken.role !== "admin") {
-      return response.status(403).send({ error: "Forbidden: Admin role required." });
-    }
-
-    // 5. Obtiene los datos del cuerpo de la solicitud
-    const { name, email, password, role } = request.body;
-    if (!email || !password || !name || !role) {
-      return response.status(400).send({ error: "Bad Request: Missing required fields." });
-    }
-
-    // 6. Ejecuta la lógica de creación (dentro de un try/catch)
-    try {
-      const userRecord = await admin.auth().createUser({
-        email: email,
-        password: password,
-        displayName: name,
-      });
-
-      await admin.auth().setCustomUserClaims(userRecord.uid, { role: role });
-
-      await admin.firestore().collection("users").doc(userRecord.uid).set({
-        uid: userRecord.uid,
-        name: name,
-        email: email,
-        role: role,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // 7. Envía una respuesta exitosa
-      return response
-        .status(200)
-        .send({ success: true, message: `Usuario ${name} creado con éxito.` });
-    } catch (error) {
-      console.error("Error creating user:", error);
-      if (error.code === "auth/email-already-exists") {
-        return response.status(409).send({ error: "Conflict: Email already exists." });
-      }
-      return response.status(500).send({ error: "Internal Server Error: Failed to create user." });
-    }
-  });
+const cors = require("cors")({
+  origin: (origin, callback) => {
+    // Peticiones sin Origin (curl, server-to-server) no reciben cabeceras CORS: el
+    // navegador nunca las acepta, pero siguen necesitando un ID token válido.
+    callback(null, !origin || ALLOWED_ORIGINS.includes(origin));
+  },
+  methods: ["POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 3600,
 });
 
-// 👇 Mantenemos la función de prueba (si aún la necesitas)
-exports.checkAuthContext = functions.https.onRequest(async (request, response) => {
-  cors(request, response, async () => {
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return response.status(401).send({ error: "No token" });
-    try {
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      console.log("checkAuthContext (onRequest): Token recibido:", decodedToken);
-      return response.status(200).send({ auth: decodedToken });
-    } catch (error) {
-      console.error("checkAuthContext (onRequest): Error verificando:", error);
-      return response.status(401).send({ error: "Invalid token" });
-    }
-  });
+const ALLOWED_ROLES = ["admin", "asociado", "cliente"];
+
+// Único usuario que puede cambiar el rol / estado de otros administradores.
+const SUPER_ADMIN_ID = "roFWFs8Iq5MCzJ9tyn1zk0u5GnY2";
+
+const APP_TIME_ZONE = "America/Bogota";
+
+const RESERVATION_STATUS_LABELS = {
+  pending: "Pendiente",
+  confirmed: "Confirmada",
+  cancelled: "Cancelada",
+  completed: "Completada",
+};
+
+const RESERVATION_STATUS_COLORS = {
+  pending: "#FF9800",
+  confirmed: "#4CAF50",
+  cancelled: "#F44336",
+  completed: "#2196F3",
+};
+
+// ---------------------------------------------------------------------------
+// Utilidades
+// ---------------------------------------------------------------------------
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const HTML_ESCAPES = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+  "`": "&#96;",
+};
+
+/** Escapa cualquier valor para insertarlo en HTML. */
+function escapeHtml(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[&<>"'`]/g, (ch) => HTML_ESCAPES[ch]);
+}
+
+/** Texto plano de una línea (asuntos de email, etc.). */
+function oneLine(value, max = 150) {
+  return String(value || "")
+    .replace(/[\r\n\t]+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+const currencyFormatter = new Intl.NumberFormat("es-CO", {
+  style: "currency",
+  currency: "COP",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
 });
 
-exports.toggleUserStatus = functions.https.onRequest(async (request, response) => {
-  cors(request, response, async () => {
-    if (request.method !== "POST") {
-      return response.status(405).send({ error: "Method Not Allowed" });
-    }
+function formatCurrency(amount) {
+  const n = Number(amount);
+  return currencyFormatter.format(Number.isFinite(n) ? n : 0);
+}
 
-    let decodedToken;
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return response.status(401).send({ error: "Unauthorized: No token." });
-    try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-    } catch (error) {
-      return response.status(401).send({ error: "Unauthorized: Invalid token." });
-    }
-
-    if (decodedToken.role !== "admin") {
-      return response.status(403).send({ error: "Forbidden: Admin role required." });
-    }
-
-    const { userId } = request.body;
-    if (!userId) {
-      return response.status(400).send({ error: "Bad Request: userId is required." });
-    }
-
-    // Evita que un admin se deshabilite a sí mismo (importante!)
-    if (decodedToken.uid === userId) {
-      return response.status(400).send({ error: "Bad Request: Admin cannot disable self." });
-    }
-
-    try {
-      const userRecord = await admin.auth().getUser(userId);
-      const currentStatus = userRecord.disabled;
-      const newStatus = !currentStatus; // Invierte el estado
-
-      // Actualiza en Firebase Authentication
-      await admin.auth().updateUser(userId, { disabled: newStatus });
-
-      // Actualiza en Firestore (si tienes el campo 'status')
-      await admin
-        .firestore()
-        .collection("users")
-        .doc(userId)
-        .update({
-          status: newStatus ? "disabled" : "active", // O los nombres que uses
-        });
-
-      const actionText = newStatus ? "deshabilitado" : "habilitado";
-      return response.status(200).send({
-        success: true,
-        message: `Usuario ${userRecord.displayName || userId} ${actionText} correctamente.`,
-      });
-    } catch (error) {
-      console.error("Error toggling user status:", error);
-      return response
-        .status(500)
-        .send({ error: "Internal Server Error: Failed to update user status." });
-    }
+/** 'YYYY-MM-DD' → "10 de enero de 2025" (sin desfase de zona horaria). */
+function formatDateEs(isoDate) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate || ""));
+  if (!m) return "N/A";
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return d.toLocaleDateString("es-CO", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
-});
+}
 
-exports.setUserRole = functions.https.onRequest(async (request, response) => {
-  cors(request, response, async () => {
-    if (request.method !== "POST") {
-      return response.status(405).send({ error: "Method Not Allowed" });
-    }
+/** Fecha de hoy 'YYYY-MM-DD' en la zona horaria de la app (Colombia). */
+function todayISOInAppZone() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t).value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
 
-    let decodedToken;
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return response.status(401).send({ error: "Unauthorized: No token." });
-    try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-    } catch (error) {
-      return response.status(401).send({ error: "Unauthorized: Invalid token." });
-    }
+function isNonEmptyString(v, max = 500) {
+  return typeof v === "string" && v.trim().length > 0 && v.length <= max;
+}
 
-    if (decodedToken.role !== "admin") {
-      return response.status(403).send({ error: "Forbidden: Admin role required." });
-    }
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    const { userId, newRole } = request.body;
-    if (!userId || !newRole) {
-      return response.status(400).send({ error: "Bad Request: userId and newRole are required." });
-    }
+/** Verifica el ID token del header Authorization. Lanza 401 si falta o no es válido. */
+async function verifyRequestToken(request) {
+  const header = request.headers.authorization || "";
+  const match = /^Bearer (.+)$/.exec(header);
+  if (!match) throw new HttpError(401, "Unauthorized: No token provided.");
+  try {
+    return await admin.auth().verifyIdToken(match[1], true);
+  } catch (error) {
+    throw new HttpError(401, "Unauthorized: Invalid token.");
+  }
+}
 
-    // Validar que el rol sea uno permitido
-    const allowedRoles = ["admin", "asociado", "cliente"];
-    if (!allowedRoles.includes(newRole)) {
-      return response.status(400).send({ error: "Bad Request: Invalid role specified." });
-    }
+/**
+ * Perfil del llamante desde Firestore. Lanza 403 si no existe o está deshabilitado.
+ * @returns {Promise<{uid: string, role: string, data: object}>}
+ */
+async function getCaller(decodedToken) {
+  const snap = await db.collection("users").doc(decodedToken.uid).get();
+  if (!snap.exists) throw new HttpError(403, "Forbidden: User not found.");
+  const data = snap.data() || {};
+  if (data.status === "disabled") throw new HttpError(403, "Forbidden: User disabled.");
+  const role = ALLOWED_ROLES.includes(data.role) ? data.role : "cliente";
+  return { uid: decodedToken.uid, role, data };
+}
 
-    // ID del super administrador (único que puede cambiar roles de otros admins)
-    const SUPER_ADMIN_ID = "roFWFs8Iq5MCzJ9tyn1zk0u5GnY2";
+/** Autentica + exige uno de los roles indicados. */
+async function requireRole(request, roles) {
+  const decodedToken = await verifyRequestToken(request);
+  const caller = await getCaller(decodedToken);
+  if (!roles.includes(caller.role)) {
+    throw new HttpError(403, "Forbidden: Insufficient permissions.");
+  }
+  return { decodedToken, caller };
+}
 
-    // Verificar si el usuario objetivo es un administrador
-    try {
-      const targetUserDoc = await admin.firestore().collection("users").doc(userId).get();
-      const targetUserRole = targetUserDoc.exists ? targetUserDoc.data().role : null;
+function sendError(response, error, context) {
+  if (error instanceof HttpError) {
+    return response.status(error.status).json({ error: error.message });
+  }
+  logger.error(`${context} failed`, { code: error && error.code, message: error && error.message });
+  return response.status(500).json({ error: "Internal Server Error." });
+}
 
-      // Si el usuario objetivo es admin, solo el super admin puede cambiar su rol
-      if (targetUserRole === "admin" && decodedToken.uid !== SUPER_ADMIN_ID) {
-        return response.status(403).send({
-          error:
-            "Forbidden: Only the super administrator can change roles of other administrators.",
-        });
+/**
+ * Envuelve un handler HTTP con CORS (lista blanca), método POST y manejo de errores.
+ * Mantiene la generación de función (functions.https.onRequest) que ya estaba desplegada.
+ */
+function httpPost(context, handler) {
+  return functions.https.onRequest((request, response) => {
+    cors(request, response, async () => {
+      if (request.method !== "POST") {
+        return response.status(405).json({ error: "Method Not Allowed" });
       }
-
-      // Si el usuario objetivo es admin y se intenta cambiar a otro rol, solo el super admin puede hacerlo
-      if (
-        targetUserRole === "admin" &&
-        newRole !== "admin" &&
-        decodedToken.uid !== SUPER_ADMIN_ID
-      ) {
-        return response.status(403).send({
-          error:
-            "Forbidden: Only the super administrator can remove admin role from other administrators.",
-        });
-      }
-    } catch (error) {
-      console.error("Error checking target user role:", error);
-      // Continuar con la validación si hay error al obtener el documento
-    }
-
-    // Evita que un admin se quite su propio rol (importante!)
-    if (decodedToken.uid === userId && newRole !== "admin") {
-      return response
-        .status(400)
-        .send({ error: "Bad Request: Admin cannot remove own admin role." });
-    }
-
-    try {
-      // 1. Establece el Custom Claim en Auth
-      await admin.auth().setCustomUserClaims(userId, { role: newRole });
-
-      // 2. Actualiza el rol en Firestore
-      await admin.firestore().collection("users").doc(userId).update({
-        role: newRole,
-      });
-
-      return response
-        .status(200)
-        .send({ success: true, message: `Rol de ${userId} actualizado a ${newRole}.` });
-    } catch (error) {
-      console.error("Error setting user role:", error);
-      return response
-        .status(500)
-        .send({ error: "Internal Server Error: Failed to set user role." });
-    }
-  });
-});
-
-// 👇 Función para aprobar o rechazar canchas (solo admin)
-exports.approveField = functions.https.onRequest(async (request, response) => {
-  cors(request, response, async () => {
-    if (request.method !== "POST") {
-      return response.status(405).send({ error: "Method Not Allowed" });
-    }
-
-    let decodedToken;
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return response.status(401).send({ error: "Unauthorized: No token." });
-    try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-    } catch (error) {
-      return response.status(401).send({ error: "Unauthorized: Invalid token." });
-    }
-
-    if (decodedToken.role !== "admin") {
-      return response.status(403).send({ error: "Forbidden: Admin role required." });
-    }
-
-    const { fieldId, action } = request.body;
-    if (!fieldId || !action) {
-      return response.status(400).send({ error: "Bad Request: fieldId and action are required." });
-    }
-
-    if (action !== "approve" && action !== "reject") {
-      return response
-        .status(400)
-        .send({ error: "Bad Request: action must be 'approve' or 'reject'." });
-    }
-
-    try {
-      const fieldRef = admin.firestore().collection("canchas").doc(fieldId);
-      const fieldDoc = await fieldRef.get();
-
-      if (!fieldDoc.exists) {
-        return response.status(404).send({ error: "Not Found: Field does not exist." });
-      }
-
-      const newStatus = action === "approve" ? "approved" : "rejected";
-      const fieldData = fieldDoc.data();
-
-      await fieldRef.update({
-        status: newStatus,
-        reviewedAt: admin.firestore.FieldValue.serverTimestamp(),
-        reviewedBy: decodedToken.uid,
-      });
-
-      // Crear notificación para el dueño de la cancha
       try {
-        const notificationData = {
-          userId: fieldData.ownerId,
-          type: action === "approve" ? "field_approved" : "field_rejected",
-          title: action === "approve" ? "Cancha Aprobada" : "Cancha Rechazada",
-          message:
-            action === "approve"
-              ? `Tu cancha "${fieldData.name}" ha sido aprobada y ahora está visible para los clientes.`
-              : `Tu cancha "${fieldData.name}" ha sido rechazada. Por favor, revisa la información y contacta al administrador si tienes dudas.`,
-          relatedId: fieldId,
-          actionUrl: "/associate/fields",
-          icon: action === "approve" ? "check_circle" : "cancel",
-          color: action === "approve" ? "success" : "error",
-          read: false,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        };
-
-        await admin.firestore().collection("notifications").add(notificationData);
-      } catch (notificationError) {
-        console.error("Error al crear notificación:", notificationError);
-        // No fallar la operación principal si la notificación falla
-      }
-
-      const actionText = action === "approve" ? "aprobada" : "rechazada";
-      return response.status(200).send({
-        success: true,
-        message: `Cancha ${actionText} correctamente.`,
-      });
-    } catch (error) {
-      console.error("Error approving/rejecting field:", error);
-      return response
-        .status(500)
-        .send({ error: "Internal Server Error: Failed to process field." });
-    }
-  });
-});
-
-// 👇 Función para deshabilitar o habilitar canchas (asociado - solo su propia cancha)
-exports.toggleFieldStatus = functions.https.onRequest(async (request, response) => {
-  cors(request, response, async () => {
-    if (request.method !== "POST") {
-      return response.status(405).send({ error: "Method Not Allowed" });
-    }
-
-    let decodedToken;
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return response.status(401).send({ error: "Unauthorized: No token." });
-    try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-    } catch (error) {
-      return response.status(401).send({ error: "Unauthorized: Invalid token." });
-    }
-
-    const { fieldId } = request.body;
-    if (!fieldId) {
-      return response.status(400).send({ error: "Bad Request: fieldId is required." });
-    }
-
-    try {
-      // Obtener el rol del usuario desde Firestore
-      const userDoc = await admin.firestore().collection("users").doc(decodedToken.uid).get();
-      if (!userDoc.exists) {
-        return response.status(403).send({ error: "Forbidden: User not found." });
-      }
-
-      const userData = userDoc.data();
-      const userRole = userData.role;
-
-      // Verificar que sea asociado o admin
-      if (userRole !== "asociado" && userRole !== "admin") {
-        return response.status(403).send({ error: "Forbidden: Associate or admin role required." });
-      }
-
-      const fieldRef = admin.firestore().collection("canchas").doc(fieldId);
-      const fieldDoc = await fieldRef.get();
-
-      if (!fieldDoc.exists) {
-        return response.status(404).send({ error: "Not Found: Field does not exist." });
-      }
-
-      const field = fieldDoc.data();
-
-      // Si no es admin, verificar que sea el dueño de la cancha
-      if (userRole !== "admin" && field.ownerId !== decodedToken.uid) {
-        return response
-          .status(403)
-          .send({ error: "Forbidden: You can only modify your own fields." });
-      }
-
-      // Cambiar el estado: si está disabled, cambiar a approved; si no, cambiar a disabled
-      const newStatus = field.status === "disabled" ? "approved" : "disabled";
-
-      // Si se intenta deshabilitar, verificar que no tenga reservas confirmadas futuras
-      if (newStatus === "disabled") {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayISO = today.toISOString().split("T")[0]; // YYYY-MM-DD
-
-        const futureReservationsQuery = admin
-          .firestore()
-          .collection("reservations")
-          .where("fieldId", "==", fieldId)
-          .where("status", "==", "confirmed")
-          .where("date", ">=", todayISO);
-
-        const futureReservationsSnapshot = await futureReservationsQuery.get();
-
-        if (!futureReservationsSnapshot.empty) {
-          const count = futureReservationsSnapshot.size;
-          return response.status(400).send({
-            error: `No se puede deshabilitar la cancha porque tiene ${count} reserva(s) confirmada(s) en el futuro. Por favor, cancela o completa estas reservas antes de deshabilitar la cancha.`,
-          });
-        }
-      }
-
-      await fieldRef.update({
-        status: newStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      const actionText = newStatus === "disabled" ? "deshabilitada" : "habilitada";
-      return response.status(200).send({
-        success: true,
-        message: `Cancha ${actionText} correctamente.`,
-      });
-    } catch (error) {
-      console.error("Error toggling field status:", error);
-      return response
-        .status(500)
-        .send({ error: "Internal Server Error: Failed to update field status." });
-    }
-  });
-});
-
-// 👇 Función para enviar ticket por correo electrónico
-exports.sendTicketByEmail = onRequest(
-  { secrets: [sendgridApiKey], cors: true },
-  async (request, response) => {
-    if (request.method !== "POST") {
-      return response.status(405).json({ error: "Method Not Allowed" });
-    }
-
-    let decodedToken;
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return response.status(401).json({ error: "Unauthorized: No token." });
-    try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-    } catch (error) {
-      return response.status(401).json({ error: "Unauthorized: Invalid token." });
-    }
-
-    const {
-      email: providedEmail,
-      reservationId,
-      reservationData,
-      userProfile,
-      ticketHTML,
-    } = request.body;
-    if (!reservationId || !ticketHTML) {
-      return response
-        .status(400)
-        .json({ error: "Bad Request: reservationId and ticketHTML are required." });
-    }
-
-    // Obtener el email del cliente: usar el proporcionado si está disponible, sino obtenerlo desde Firestore
-    let clientEmail = providedEmail || "";
-    let finalUserName = userProfile?.name || "Usuario";
-
-    // Si no se proporcionó el email, intentar obtenerlo desde el token o desde Firestore
-    if (!clientEmail) {
-      // Primero intentar desde el token
-      clientEmail = decodedToken.email || "";
-
-      // Si no está en el token, obtenerlo desde Firestore usando el UID del token
-      if (!clientEmail && decodedToken.uid) {
-        try {
-          const userDoc = await admin.firestore().collection("users").doc(decodedToken.uid).get();
-          if (userDoc.exists) {
-            const userData = userDoc.data();
-            clientEmail = userData.email || "";
-            finalUserName = userData.name || finalUserName;
-          }
-        } catch (error) {
-          console.error("Error al obtener email del usuario desde Firestore:", error);
-        }
-      }
-    }
-
-    // Si aún no tenemos el email, intentar obtenerlo desde la reserva
-    if (!clientEmail && reservationData?.clientId) {
-      try {
-        const clientUserDoc = await admin
-          .firestore()
-          .collection("users")
-          .doc(reservationData.clientId)
-          .get();
-        if (clientUserDoc.exists) {
-          const clientUserData = clientUserDoc.data();
-          clientEmail = clientUserData.email || "";
-          finalUserName = clientUserData.name || finalUserName;
-        }
+        return await handler(request, response);
       } catch (error) {
-        console.error("Error al obtener email del cliente desde la reserva:", error);
+        return sendError(response, error, context);
       }
+    });
+  });
+}
+
+// --- Email ---------------------------------------------------------------
+
+async function sendEmail({ to, subject, html, text }) {
+  const apiKey = sendgridApiKey.value();
+  if (!apiKey || !apiKey.startsWith("SG.")) {
+    throw new HttpError(500, "El servicio de correo no está configurado.");
+  }
+  const sgMail = require("@sendgrid/mail");
+  sgMail.setApiKey(apiKey);
+  try {
+    await sgMail.send({
+      to,
+      from: { email: SENDGRID_FROM_EMAIL, name: "GoalTime" },
+      subject: oneLine(subject),
+      html,
+      text,
+    });
+  } catch (error) {
+    const statusCode = error && (error.code || (error.response && error.response.statusCode));
+    logger.error("SendGrid send failed", { statusCode });
+    throw new HttpError(502, "No se pudo enviar el correo. Inténtalo más tarde.");
+  }
+}
+
+function emailLayout(subtitle, innerHtml) {
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+  <body style="font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="text-align: center; margin-bottom: 30px;">
+      <h1 style="color: #1976d2; margin: 0;">GoalTime</h1>
+      <p style="color: #666; margin: 5px 0 0 0;">${escapeHtml(subtitle)}</p>
+    </div>
+    ${innerHtml}
+    <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
+      <p style="margin: 5px 0;">© ${year} GoalTime. Todos los derechos reservados.</p>
+    </div>
+  </body>
+</html>`;
+}
+
+function detailRow(label, valueHtml) {
+  return `<tr>
+    <td style="padding: 8px 0; color: #666; font-weight: bold; width: 40%; vertical-align: top;">${escapeHtml(
+      label
+    )}</td>
+    <td style="padding: 8px 0; color: #333;">${valueHtml}</td>
+  </tr>`;
+}
+
+function reservationCode(id) {
+  return `#${String(id || "").substring(0, 8).toUpperCase()}`;
+}
+
+/** Email + nombre de un usuario: email desde Firebase Auth (fuente de verdad), nombre de Firestore. */
+async function getUserContact(userId) {
+  let email = "";
+  let name = "";
+  try {
+    const record = await admin.auth().getUser(userId);
+    email = record.email || "";
+    name = record.displayName || "";
+  } catch (error) {
+    // usuario de Auth inexistente: se intenta con Firestore
+  }
+  const snap = await db.collection("users").doc(userId).get();
+  if (snap.exists) {
+    const data = snap.data() || {};
+    name = data.name || name;
+    if (!email) email = data.email || "";
+  }
+  return { email, name: name || "Cliente" };
+}
+
+// ---------------------------------------------------------------------------
+// Administración de usuarios (solo admin)
+// ---------------------------------------------------------------------------
+
+exports.createUser = httpPost("createUser", async (request, response) => {
+  await requireRole(request, ["admin"]);
+
+  const { name, email, password, role } = request.body || {};
+  if (!isNonEmptyString(name, 120) || !isNonEmptyString(email, 254) || !EMAIL_RE.test(email)) {
+    throw new HttpError(400, "Bad Request: Nombre o email no válidos.");
+  }
+  if (typeof password !== "string" || password.length < 6 || password.length > 128) {
+    throw new HttpError(400, "Bad Request: La contraseña debe tener al menos 6 caracteres.");
+  }
+  if (!ALLOWED_ROLES.includes(role)) {
+    throw new HttpError(400, "Bad Request: Invalid role specified.");
+  }
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().createUser({
+      email: email.trim().toLowerCase(),
+      password,
+      displayName: name.trim(),
+    });
+  } catch (error) {
+    if (error.code === "auth/email-already-exists") {
+      throw new HttpError(409, "Conflict: Email already exists.");
     }
-
-    // Si aún no tenemos el email, usar el que viene en reservationData si está disponible
-    if (!clientEmail && reservationData?.clientEmail) {
-      clientEmail = reservationData.clientEmail;
+    if (error.code === "auth/invalid-password" || error.code === "auth/invalid-email") {
+      throw new HttpError(400, "Bad Request: Email o contraseña no válidos.");
     }
+    throw error;
+  }
 
-    if (!clientEmail) {
-      return response.status(400).json({
-        error:
-          "No se pudo obtener el correo electrónico del usuario. Por favor, verifica que tu perfil tenga un email válido.",
-      });
-    }
+  try {
+    await admin.auth().setCustomUserClaims(userRecord.uid, { role });
+    await db.collection("users").doc(userRecord.uid).set({
+      uid: userRecord.uid,
+      name: name.trim(),
+      email: userRecord.email,
+      role,
+      status: "active",
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    // Rollback para no dejar un usuario de Auth sin perfil.
+    await admin.auth().deleteUser(userRecord.uid).catch(() => {});
+    throw error;
+  }
 
-    // Verificar que el usuario esté enviando el ticket a su propio correo
-    // Priorizar verificación por UID (más confiable), luego por email
-    let isAuthorized = false;
+  return response.status(200).json({ success: true, message: `Usuario ${name.trim()} creado con éxito.` });
+});
 
-    // Verificar por UID (más confiable)
-    if (decodedToken.uid && reservationData?.clientId) {
-      isAuthorized = decodedToken.uid === reservationData.clientId;
-    }
+exports.toggleUserStatus = httpPost("toggleUserStatus", async (request, response) => {
+  const { caller } = await requireRole(request, ["admin"]);
 
-    // Si no se pudo verificar por UID, verificar por email
-    if (!isAuthorized && decodedToken.email) {
-      isAuthorized = decodedToken.email.toLowerCase() === clientEmail.toLowerCase();
-    }
+  const { userId } = request.body || {};
+  if (!isNonEmptyString(userId, 128)) {
+    throw new HttpError(400, "Bad Request: userId is required.");
+  }
+  if (caller.uid === userId) {
+    throw new HttpError(400, "Bad Request: Admin cannot disable self.");
+  }
 
-    // Si aún no está autorizado y se proporcionó un email, verificar que coincida con el del token
-    if (!isAuthorized && providedEmail && decodedToken.email) {
-      isAuthorized = providedEmail.toLowerCase() === decodedToken.email.toLowerCase();
-    }
+  const targetSnap = await db.collection("users").doc(userId).get();
+  const targetRole = targetSnap.exists ? targetSnap.data().role : null;
+  if (targetRole === "admin" && caller.uid !== SUPER_ADMIN_ID) {
+    throw new HttpError(403, "Forbidden: Only the super administrator can disable administrators.");
+  }
 
-    if (!isAuthorized) {
-      return response.status(403).json({
-        error: "Forbidden: You can only send tickets to your own email.",
-      });
-    }
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUser(userId);
+  } catch (error) {
+    throw new HttpError(404, "Not Found: User does not exist.");
+  }
+  const disable = !userRecord.disabled;
 
-    // Definir fromEmail fuera del try para que esté disponible en el catch
-    let fromEmail = SENDGRID_FROM_EMAIL;
+  await admin.auth().updateUser(userId, { disabled: disable });
+  if (disable) await admin.auth().revokeRefreshTokens(userId);
+  if (targetSnap.exists) {
+    await db
+      .collection("users")
+      .doc(userId)
+      .update({ status: disable ? "disabled" : "active", updatedAt: FieldValue.serverTimestamp() });
+  }
 
-    // Obtener la API Key del secret
-    const SENDGRID_API_KEY = sendgridApiKey.value();
+  const actionText = disable ? "deshabilitado" : "habilitado";
+  return response.status(200).json({
+    success: true,
+    message: `Usuario ${userRecord.displayName || ""} ${actionText} correctamente.`.replace(/\s+/g, " "),
+  });
+});
 
-    if (!SENDGRID_API_KEY) {
-      return response.status(500).json({
-        error: "SendGrid API Key not configured.",
-      });
-    }
+exports.setUserRole = httpPost("setUserRole", async (request, response) => {
+  const { caller } = await requireRole(request, ["admin"]);
 
-    try {
-      // Usar SendGrid SDK oficial (más simple y confiable)
-      const sgMail = require("@sendgrid/mail");
+  const { userId, newRole } = request.body || {};
+  if (!isNonEmptyString(userId, 128) || !newRole) {
+    throw new HttpError(400, "Bad Request: userId and newRole are required.");
+  }
+  if (!ALLOWED_ROLES.includes(newRole)) {
+    throw new HttpError(400, "Bad Request: Invalid role specified.");
+  }
+  if (caller.uid === userId) {
+    throw new HttpError(400, "Bad Request: Admin cannot change own role.");
+  }
 
-      // Validar que la API Key tenga el formato correcto
-      if (!SENDGRID_API_KEY || !SENDGRID_API_KEY.startsWith("SG.")) {
-        console.error("API Key de SendGrid inválida o mal formateada");
-        return response.status(500).json({
-          error:
-            "SendGrid API Key no está configurada correctamente. Verifica que la API Key sea válida y comience con 'SG.'",
-        });
-      }
+  // Fallo cerrado: si no se puede leer el usuario objetivo, no se continúa.
+  const targetSnap = await db.collection("users").doc(userId).get();
+  if (!targetSnap.exists) throw new HttpError(404, "Not Found: User does not exist.");
+  const targetRole = targetSnap.data().role;
 
-      // Configurar la API Key de SendGrid
-      sgMail.setApiKey(SENDGRID_API_KEY);
+  if (targetRole === "admin" && caller.uid !== SUPER_ADMIN_ID) {
+    throw new HttpError(
+      403,
+      "Forbidden: Only the super administrator can change roles of other administrators."
+    );
+  }
 
-      console.log("Configuración de SendGrid lista");
-      console.log("Correo remitente:", fromEmail);
-      console.log("Correo destinatario:", clientEmail);
-      console.log(
-        "API Key configurada (primeros 10 caracteres):",
-        SENDGRID_API_KEY.substring(0, 10) + "..."
+  await admin.auth().setCustomUserClaims(userId, { role: newRole });
+  await db
+    .collection("users")
+    .doc(userId)
+    .update({ role: newRole, updatedAt: FieldValue.serverTimestamp() });
+
+  return response.status(200).json({ success: true, message: `Rol actualizado a ${newRole}.` });
+});
+
+// ---------------------------------------------------------------------------
+// Canchas
+// ---------------------------------------------------------------------------
+
+exports.approveField = httpPost("approveField", async (request, response) => {
+  const { caller } = await requireRole(request, ["admin"]);
+
+  const { fieldId, action } = request.body || {};
+  if (!isNonEmptyString(fieldId, 128) || !action) {
+    throw new HttpError(400, "Bad Request: fieldId and action are required.");
+  }
+  if (action !== "approve" && action !== "reject") {
+    throw new HttpError(400, "Bad Request: action must be 'approve' or 'reject'.");
+  }
+
+  const fieldRef = db.collection("canchas").doc(fieldId);
+  const fieldDoc = await fieldRef.get();
+  if (!fieldDoc.exists) throw new HttpError(404, "Not Found: Field does not exist.");
+
+  const fieldData = fieldDoc.data();
+  const newStatus = action === "approve" ? "approved" : "rejected";
+  if (fieldData.status === newStatus) {
+    throw new HttpError(400, `La cancha ya está ${action === "approve" ? "aprobada" : "rechazada"}.`);
+  }
+
+  await fieldRef.update({
+    status: newStatus,
+    reviewedAt: FieldValue.serverTimestamp(),
+    reviewedBy: caller.uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  try {
+    const fieldName = oneLine(fieldData.name || "tu cancha", 120);
+    await db.collection("notifications").add({
+      userId: fieldData.ownerId,
+      type: action === "approve" ? "field_approved" : "field_rejected",
+      title: action === "approve" ? "Cancha Aprobada" : "Cancha Rechazada",
+      message:
+        action === "approve"
+          ? `Tu cancha "${fieldName}" ha sido aprobada y ahora está visible para los clientes.`
+          : `Tu cancha "${fieldName}" ha sido rechazada. Revisa la información y vuelve a enviarla, o contacta al administrador.`,
+      relatedId: fieldId,
+      actionUrl: "/associate/fields",
+      icon: action === "approve" ? "check_circle" : "cancel",
+      color: action === "approve" ? "success" : "error",
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    logger.warn("approveField: notification failed", { code: error.code });
+  }
+
+  return response.status(200).json({
+    success: true,
+    message: `Cancha ${action === "approve" ? "aprobada" : "rechazada"} correctamente.`,
+  });
+});
+
+// Deshabilitar/habilitar una cancha APROBADA (dueño asociado o admin).
+// Solo approved ↔ disabled: una cancha pending/rejected nunca pasa a approved por aquí.
+exports.toggleFieldStatus = httpPost("toggleFieldStatus", async (request, response) => {
+  const { caller } = await requireRole(request, ["asociado", "admin"]);
+
+  const { fieldId } = request.body || {};
+  if (!isNonEmptyString(fieldId, 128)) {
+    throw new HttpError(400, "Bad Request: fieldId is required.");
+  }
+
+  const fieldRef = db.collection("canchas").doc(fieldId);
+  const fieldDoc = await fieldRef.get();
+  if (!fieldDoc.exists) throw new HttpError(404, "Not Found: Field does not exist.");
+
+  const field = fieldDoc.data();
+  if (caller.role !== "admin" && field.ownerId !== caller.uid) {
+    throw new HttpError(403, "Forbidden: You can only modify your own fields.");
+  }
+
+  let newStatus;
+  if (field.status === "approved") newStatus = "disabled";
+  else if (field.status === "disabled") newStatus = "approved";
+  else {
+    throw new HttpError(
+      400,
+      "Solo se pueden deshabilitar/habilitar canchas aprobadas. Esta cancha está pendiente de revisión o fue rechazada."
+    );
+  }
+
+  if (newStatus === "disabled") {
+    const futureReservations = await db
+      .collection("reservations")
+      .where("fieldId", "==", fieldId)
+      .where("status", "==", "confirmed")
+      .where("date", ">=", todayISOInAppZone())
+      .get();
+    if (!futureReservations.empty) {
+      throw new HttpError(
+        400,
+        `No se puede deshabilitar la cancha porque tiene ${futureReservations.size} reserva(s) confirmada(s) en el futuro. Cancela o completa estas reservas antes de deshabilitarla.`
       );
-
-      // Preparar el mensaje de email
-      const msg = {
-        to: clientEmail,
-        from: {
-          email: fromEmail, // Debe estar verificado en SendGrid
-          name: "GoalTime",
-        },
-        subject: `Ticket de Reserva - ${reservationData?.fieldName || "Cancha"}`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #1976d2; margin: 0;">GoalTime</h1>
-                <p style="color: #666; margin: 5px 0 0 0;">Ticket de Reserva Deportiva</p>
-              </div>
-              
-              <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                <p style="margin: 0 0 10px 0;">Hola <strong>${finalUserName}</strong>,</p>
-                <p style="margin: 0 0 15px 0;">Adjunto encontrarás el ticket de tu reserva.</p>
-                <p style="margin: 0;">Gracias por usar GoalTime.</p>
-              </div>
-              
-              <div style="margin: 30px 0; padding: 20px; background-color: white; border: 2px solid #e0e0e0; border-radius: 8px;">
-                ${ticketHTML}
-              </div>
-              
-              <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
-                <p style="margin: 5px 0;">© ${new Date().getFullYear()} GoalTime. Todos los derechos reservados.</p>
-                <p style="margin: 5px 0;">Este ticket es válido para la fecha y hora indicadas.</p>
-              </div>
-            </body>
-          </html>
-        `,
-        text: `
-          Ticket de Reserva GoalTime
-          
-          Hola ${finalUserName},
-          
-          Adjunto encontrarás el ticket de tu reserva.
-          
-          Información de la Reserva:
-          - Número: #${reservationId?.substring(0, 8).toUpperCase() || "N/A"}
-          - Cancha: ${reservationData?.fieldName || "N/A"}
-          - Fecha: ${reservationData?.date || "N/A"}
-          - Hora: ${reservationData?.startTime || "N/A"} - ${reservationData?.endTime || "N/A"}
-          - Total: $${(reservationData?.totalPrice || 0).toLocaleString()}
-          
-          Gracias por usar GoalTime.
-          
-          © ${new Date().getFullYear()} GoalTime. Todos los derechos reservados.
-        `,
-      };
-
-      // Enviar el email usando SendGrid
-      console.log("Intentando enviar email con SendGrid...");
-      await sgMail.send(msg);
-
-      console.log("Email enviado exitosamente con SendGrid:", {
-        to: clientEmail,
-        reservationId,
-        fromEmail: fromEmail,
-      });
-
-      return response.status(200).json({
-        success: true,
-        message: "Ticket enviado exitosamente a tu correo electrónico.",
-      });
-    } catch (error) {
-      console.error("Error sending ticket email:", error);
-      console.error("Error stack:", error.stack);
-      console.error("Error response:", error.response?.body || "No response body");
-      console.error("Error message:", error.message);
-      console.error("Error code:", error.code);
-      console.error("Error status:", error.response?.statusCode || error.status);
-
-      // Mensaje de error más descriptivo
-      let errorMessage = "Error al enviar el ticket por correo.";
-      let errorDetails = error.message;
-
-      // Manejar específicamente el error 401 (Unauthorized)
-      if (error.code === 401 || error.response?.statusCode === 401) {
-        errorMessage =
-          "La API Key de SendGrid no es válida o ha expirado. Por favor, verifica la configuración en SendGrid.";
-        errorDetails =
-          "Error 401: Unauthorized. La API Key podría estar expirada, revocada o no tener permisos suficientes.";
-
-        return response.status(500).json({
-          error: errorMessage,
-          details: errorDetails,
-          suggestion:
-            "Verifica tu API Key en SendGrid Dashboard → Settings → API Keys. Asegúrate de que tenga permisos de 'Mail Send' y que no esté expirada.",
-        });
-      }
-
-      if (error.response?.body?.errors) {
-        const sendGridErrors = error.response.body.errors;
-        errorDetails = sendGridErrors.map((e) => e.message || e).join(", ");
-
-        // Mensajes específicos de SendGrid
-        if (
-          sendGridErrors.some(
-            (e) => (e.message || "").includes("verified") || (e.message || "").includes("sender")
-          )
-        ) {
-          errorMessage =
-            "El remitente no está verificado en SendGrid. Por favor, verifica el correo noreply@goaltime.site en SendGrid → Settings → Sender Authentication.";
-        } else if (
-          sendGridErrors.some(
-            (e) =>
-              (e.message || "").includes("API key") || (e.message || "").includes("Unauthorized")
-          )
-        ) {
-          errorMessage =
-            "La API Key de SendGrid no es válida o no tiene permisos. Verifica la configuración.";
-        } else if (sendGridErrors.some((e) => (e.message || "").includes("sender"))) {
-          errorMessage =
-            "El remitente no está verificado. Asegúrate de que noreply@goaltime.site esté verificado en SendGrid.";
-        }
-      } else if (error.message && error.message.includes("Cannot find module")) {
-        errorMessage =
-          "El módulo @sendgrid/mail no está instalado. Ejecuta: cd functions && npm install @sendgrid/mail";
-        errorDetails = error.message;
-      } else if (error.message && error.message.includes("functions.config()")) {
-        errorMessage =
-          "Error de configuración: Firebase Functions v2 requiere variables de entorno. Ejecuta: firebase functions:secrets:set SENDGRID_API_KEY";
-        errorDetails = error.message;
-      }
-
-      // Asegurar que siempre devolvemos JSON
-      return response.status(500).json({
-        error: errorMessage,
-        details: errorDetails,
-      });
     }
   }
-);
 
-// 👇 Función para enviar notificación por correo de cambio de estado de reserva
+  await fieldRef.update({ status: newStatus, updatedAt: FieldValue.serverTimestamp() });
+
+  return response.status(200).json({
+    success: true,
+    message: `Cancha ${newStatus === "disabled" ? "deshabilitada" : "habilitada"} correctamente.`,
+  });
+});
+
+// Notifica a todos los admins cuando una cancha queda "pending" (nueva o reenviada).
+// Sustituye a notifyAdminsFieldPending del cliente (un asociado no puede listar admins).
+exports.onFieldPendingNotifyAdmins = onDocumentWritten("canchas/{fieldId}", async (event) => {
+  const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+  const before =
+    event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+  if (!after || after.status !== "pending") return;
+  if (before && before.status === "pending") return;
+
+  const fieldId = event.params.fieldId;
+  let ownerName = "un asociado";
+  try {
+    const ownerSnap = await db.collection("users").doc(after.ownerId).get();
+    if (ownerSnap.exists && ownerSnap.data().name) ownerName = ownerSnap.data().name;
+  } catch (error) {
+    // no crítico
+  }
+
+  const admins = await db.collection("users").where("role", "==", "admin").get();
+  if (admins.empty) return;
+
+  const fieldName = oneLine(after.name || "Nueva cancha", 120);
+  const isResubmission = Boolean(before);
+  const batch = db.batch();
+  admins.docs.forEach((adminDoc) => {
+    batch.set(db.collection("notifications").doc(), {
+      userId: adminDoc.id,
+      type: "field_pending",
+      title: isResubmission ? "Cancha Reenviada a Revisión" : "Nueva Cancha Pendiente",
+      message: `La cancha "${fieldName}" de ${oneLine(ownerName, 120)} está pendiente de aprobación.`,
+      relatedId: fieldId,
+      actionUrl: `/canchas?fieldId=${fieldId}&status=pending`,
+      icon: "pending_actions",
+      color: "warning",
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  });
+  await batch.commit();
+});
+
+// ---------------------------------------------------------------------------
+// Emails de reservas
+// ---------------------------------------------------------------------------
+
+const EMAIL_FUNCTION_OPTIONS = { secrets: [sendgridApiKey], cors: ALLOWED_ORIGINS };
+const TICKET_EMAIL_COOLDOWN_MS = 60 * 1000;
+
+function buildTicketHtml(reservationId, r, userName) {
+  const status = RESERVATION_STATUS_LABELS[r.status] || r.status || "N/A";
+  const inner = `
+    <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+      <p style="margin: 0 0 10px 0;">Hola <strong>${escapeHtml(userName)}</strong>,</p>
+      <p style="margin: 0;">Este es el ticket de tu reserva. Preséntalo en la cancha.</p>
+    </div>
+    <div style="margin: 30px 0; padding: 20px; background-color: white; border: 2px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #333; margin-top: 0;">Reserva ${escapeHtml(reservationCode(reservationId))}</h2>
+      <table style="width: 100%; border-collapse: collapse;">
+        ${detailRow("Cancha:", escapeHtml(r.fieldName || "N/A"))}
+        ${r.fieldAddress ? detailRow("Dirección:", escapeHtml(r.fieldAddress)) : ""}
+        ${detailRow("Fecha:", escapeHtml(formatDateEs(r.date)))}
+        ${detailRow("Hora:", `${escapeHtml(r.startTime || "N/A")} - ${escapeHtml(r.endTime || "N/A")}`)}
+        ${detailRow("Estado:", escapeHtml(status))}
+        ${detailRow(
+          "Total:",
+          `<strong style="color: #4CAF50;">${escapeHtml(formatCurrency(r.totalPrice))}</strong>`
+        )}
+      </table>
+    </div>
+    <p style="color: #666; font-size: 12px; text-align: center;">Este ticket es válido para la fecha y hora indicadas.</p>`;
+  return emailLayout("Ticket de Reserva Deportiva", inner);
+}
+
+function buildTicketText(reservationId, r, userName) {
+  return [
+    "Ticket de Reserva GoalTime",
+    "",
+    `Hola ${userName},`,
+    "",
+    `- Número: ${reservationCode(reservationId)}`,
+    `- Cancha: ${r.fieldName || "N/A"}`,
+    `- Fecha: ${formatDateEs(r.date)}`,
+    `- Hora: ${r.startTime || "N/A"} - ${r.endTime || "N/A"}`,
+    `- Estado: ${RESERVATION_STATUS_LABELS[r.status] || r.status || "N/A"}`,
+    `- Total: ${formatCurrency(r.totalPrice)}`,
+    "",
+    "Gracias por usar GoalTime.",
+  ].join("\n");
+}
+
+// Envía el ticket de una reserva SOLO al email del usuario autenticado, que debe ser el
+// cliente de la reserva. Se ignoran ticketHTML/email/reservationData del body.
+exports.sendTicketByEmail = onRequest(EMAIL_FUNCTION_OPTIONS, async (request, response) => {
+  if (request.method !== "POST") return response.status(405).json({ error: "Method Not Allowed" });
+  try {
+    const decodedToken = await verifyRequestToken(request);
+    await getCaller(decodedToken);
+
+    const { reservationId } = request.body || {};
+    if (!isNonEmptyString(reservationId, 128)) {
+      throw new HttpError(400, "Bad Request: reservationId is required.");
+    }
+
+    const reservationRef = db.collection("reservations").doc(reservationId);
+    const reservationSnap = await reservationRef.get();
+    if (!reservationSnap.exists) throw new HttpError(404, "Reserva no encontrada.");
+    const reservation = reservationSnap.data();
+
+    if (reservation.clientId !== decodedToken.uid) {
+      throw new HttpError(403, "Forbidden: You can only send tickets of your own reservations.");
+    }
+    if (reservation.status === "cancelled") {
+      throw new HttpError(400, "No se puede enviar el ticket de una reserva cancelada.");
+    }
+
+    const lastSent = reservation.ticketEmailSentAt && reservation.ticketEmailSentAt.toMillis
+      ? reservation.ticketEmailSentAt.toMillis()
+      : 0;
+    if (Date.now() - lastSent < TICKET_EMAIL_COOLDOWN_MS) {
+      throw new HttpError(429, "Ya enviamos el ticket hace un momento. Espera un minuto e inténtalo de nuevo.");
+    }
+
+    const contact = await getUserContact(decodedToken.uid);
+    const to = decodedToken.email || contact.email;
+    if (!to) {
+      throw new HttpError(400, "Tu cuenta no tiene un correo electrónico asociado.");
+    }
+
+    await sendEmail({
+      to,
+      subject: `Ticket de Reserva - ${reservation.fieldName || "Cancha"}`,
+      html: buildTicketHtml(reservationId, reservation, contact.name),
+      text: buildTicketText(reservationId, reservation, contact.name),
+    });
+
+    await reservationRef.update({ ticketEmailSentAt: FieldValue.serverTimestamp() });
+
+    return response.status(200).json({
+      success: true,
+      message: "Ticket enviado exitosamente a tu correo electrónico.",
+    });
+  } catch (error) {
+    return sendError(response, error, "sendTicketByEmail");
+  }
+});
+
+// Notifica por email al CLIENTE el estado actual de su reserva.
+// Solo el asociado dueño de la cancha o un admin. Destinatario: users/{clientId}
+// (email de Firebase Auth). Estado y datos se leen de Firestore, no del body.
 exports.sendReservationStatusChangeEmail = onRequest(
-  { secrets: [sendgridApiKey], cors: true },
+  EMAIL_FUNCTION_OPTIONS,
   async (request, response) => {
-    if (request.method !== "POST") {
-      return response.status(405).json({ error: "Method Not Allowed" });
-    }
-
-    let decodedToken;
-    const idToken = request.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return response.status(401).json({ error: "Unauthorized: No token." });
+    if (request.method !== "POST") return response.status(405).json({ error: "Method Not Allowed" });
     try {
-      decodedToken = await admin.auth().verifyIdToken(idToken);
-    } catch (error) {
-      return response.status(401).json({ error: "Unauthorized: Invalid token." });
-    }
+      const { caller } = await requireRole(request, ["asociado", "admin"]);
 
-    const {
-      reservationId,
-      newStatus,
-      previousStatus,
-      reason,
-      clientName,
-      clientEmail: providedEmail,
-    } = request.body;
-    if (!reservationId || !newStatus) {
-      return response
-        .status(400)
-        .json({ error: "Bad Request: reservationId and newStatus are required." });
-    }
-
-    // Verificar que el usuario tenga permisos (asociado o admin)
-    const userDoc = await admin.firestore().collection("users").doc(decodedToken.uid).get();
-    if (!userDoc.exists) {
-      return response.status(403).json({ error: "Forbidden: User not found." });
-    }
-
-    const userData = userDoc.data();
-    if (userData.role !== "asociado" && userData.role !== "admin") {
-      return response.status(403).json({ error: "Forbidden: Insufficient permissions." });
-    }
-
-    try {
-      // Obtener la reserva desde Firestore
-      const reservationRef = admin.firestore().collection("reservations").doc(reservationId);
-      const reservationDoc = await reservationRef.get();
-
-      if (!reservationDoc.exists) {
-        return response.status(404).json({ error: "Reservation not found." });
+      const { reservationId, reason: bodyReason } = request.body || {};
+      if (!isNonEmptyString(reservationId, 128)) {
+        throw new HttpError(400, "Bad Request: reservationId and newStatus are required.");
       }
 
-      const reservationData = reservationDoc.data();
+      const reservationSnap = await db.collection("reservations").doc(reservationId).get();
+      if (!reservationSnap.exists) throw new HttpError(404, "Reservation not found.");
+      const r = reservationSnap.data();
 
-      // Obtener el email del cliente: usar el proporcionado si está disponible, sino obtenerlo desde Firestore
-      let clientEmail = providedEmail || "";
-      let finalClientName = clientName || "Cliente";
-
-      // Si no se proporcionó el email, intentar obtenerlo desde la reserva
-      if (!clientEmail && reservationData.clientId) {
-        try {
-          const clientUserDoc = await admin
-            .firestore()
-            .collection("users")
-            .doc(reservationData.clientId)
-            .get();
-          if (clientUserDoc.exists) {
-            const clientUserData = clientUserDoc.data();
-            clientEmail = clientUserData.email || "";
-            finalClientName = clientUserData.name || finalClientName;
-          }
-        } catch (error) {
-          console.error("Error al obtener email del cliente:", error);
+      if (caller.role !== "admin") {
+        let ownerId = r.ownerId;
+        if (!ownerId) {
+          const fieldSnap = await db.collection("canchas").doc(r.fieldId).get();
+          ownerId = fieldSnap.exists ? fieldSnap.data().ownerId : null;
+        }
+        if (!ownerId || ownerId !== caller.uid) {
+          throw new HttpError(403, "Forbidden: You do not own this field.");
         }
       }
 
-      // Si aún no tenemos el email, usar el que viene en reservationData si está disponible
-      if (!clientEmail && reservationData.clientEmail) {
-        clientEmail = reservationData.clientEmail;
+      if (!r.clientId) throw new HttpError(400, "La reserva no tiene cliente asociado.");
+      const contact = await getUserContact(r.clientId);
+      if (!contact.email) {
+        throw new HttpError(400, "No se pudo obtener el correo electrónico del cliente de la reserva.");
       }
 
-      if (!clientEmail) {
-        return response.status(400).json({
-          error: "No se pudo obtener el correo electrónico del cliente de la reserva.",
-        });
-      }
+      const status = r.status;
+      const statusText = RESERVATION_STATUS_LABELS[status] || status || "N/A";
+      const previousText = r.previousStatus
+        ? RESERVATION_STATUS_LABELS[r.previousStatus] || r.previousStatus
+        : "";
+      const reason = oneLine(r.statusChangeReason || bodyReason || "", 500);
+      const color = RESERVATION_STATUS_COLORS[status] || "#757575";
 
-      const sgMail = require("@sendgrid/mail");
-      const sendGridApiKey = sendgridApiKey.value();
+      const inner = `
+        <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 0 0 10px 0;">Hola <strong>${escapeHtml(contact.name)}</strong>,</p>
+          <p style="margin: 0;">Te informamos que el estado de tu reserva ha sido actualizado.</p>
+        </div>
+        <div style="margin: 30px 0; padding: 20px; background-color: white; border: 2px solid #e0e0e0; border-radius: 8px;">
+          <h2 style="color: #333; margin-top: 0;">Detalles de la Reserva</h2>
+          <table style="width: 100%; border-collapse: collapse;">
+            ${detailRow("Cancha:", escapeHtml(r.fieldName || "N/A"))}
+            ${detailRow("Fecha:", escapeHtml(formatDateEs(r.date)))}
+            ${detailRow("Hora:", `${escapeHtml(r.startTime || "N/A")} - ${escapeHtml(r.endTime || "N/A")}`)}
+            ${previousText ? detailRow("Estado anterior:", escapeHtml(previousText)) : ""}
+            ${detailRow(
+              "Nuevo estado:",
+              `<span style="background-color: ${color}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.875rem;">${escapeHtml(
+                statusText
+              )}</span>`
+            )}
+            ${reason ? detailRow("Razón:", escapeHtml(reason)) : ""}
+            ${detailRow(
+              "Total:",
+              `<strong style="color: #4CAF50;">${escapeHtml(formatCurrency(r.totalPrice))}</strong>`
+            )}
+          </table>
+        </div>`;
 
-      if (!sendGridApiKey) {
-        return response.status(500).json({
-          error: "SendGrid API Key not configured.",
-        });
-      }
+      const text = [
+        "Notificación de Cambio de Estado - GoalTime",
+        "",
+        `Hola ${contact.name},`,
+        "",
+        "Te informamos que el estado de tu reserva ha sido actualizado.",
+        "",
+        `- Cancha: ${r.fieldName || "N/A"}`,
+        `- Fecha: ${formatDateEs(r.date)}`,
+        `- Hora: ${r.startTime || "N/A"} - ${r.endTime || "N/A"}`,
+        previousText ? `- Estado anterior: ${previousText}` : null,
+        `- Nuevo estado: ${statusText}`,
+        reason ? `- Razón: ${reason}` : null,
+        `- Total: ${formatCurrency(r.totalPrice)}`,
+      ]
+        .filter((l) => l !== null)
+        .join("\n");
 
-      sgMail.setApiKey(sendGridApiKey);
-      const fromEmail = SENDGRID_FROM_EMAIL;
-
-      // Mapear estados a texto en español
-      const statusMap = {
-        pending: "Pendiente",
-        confirmed: "Confirmada",
-        cancelled: "Cancelada",
-        completed: "Completada",
-      };
-
-      const statusText = statusMap[newStatus] || newStatus;
-      const previousStatusText = previousStatus
-        ? statusMap[previousStatus] || previousStatus
-        : reservationData.status || "Pendiente";
-
-      // Generar HTML del correo
-      const statusColor =
-        {
-          pending: "#FF9800",
-          confirmed: "#4CAF50",
-          cancelled: "#F44336",
-          completed: "#2196F3",
-        }[newStatus] || "#757575";
-
-      const emailHTML = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <h1 style="color: #1976d2; margin: 0;">GoalTime</h1>
-              <p style="color: #666; margin: 5px 0 0 0;">Notificación de Cambio de Estado</p>
-            </div>
-            
-            <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <p style="margin: 0 0 10px 0;">Hola <strong>${finalClientName}</strong>,</p>
-              <p style="margin: 0 0 15px 0;">Te informamos que el estado de tu reserva ha sido actualizado.</p>
-            </div>
-
-            <div style="margin: 30px 0; padding: 20px; background-color: white; border: 2px solid #e0e0e0; border-radius: 8px;">
-              <h2 style="color: #333; margin-top: 0; margin-bottom: 20px;">Detalles de la Reserva</h2>
-              
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-weight: bold; width: 40%;">Cancha:</td>
-                  <td style="padding: 8px 0; color: #333;">${
-                    reservationData.fieldName || "N/A"
-                  }</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-weight: bold;">Fecha:</td>
-                  <td style="padding: 8px 0; color: #333;">${reservationData.date || "N/A"}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-weight: bold;">Hora:</td>
-                  <td style="padding: 8px 0; color: #333;">${
-                    reservationData.startTime || "N/A"
-                  } - ${reservationData.endTime || "N/A"}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-weight: bold;">Estado Anterior:</td>
-                  <td style="padding: 8px 0; color: #333;">${previousStatusText}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-weight: bold;">Nuevo Estado:</td>
-                  <td style="padding: 8px 0;">
-                    <span style="background-color: ${statusColor}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 0.875rem;">
-                      ${statusText}
-                    </span>
-                  </td>
-                </tr>
-                ${
-                  reason
-                    ? `
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-weight: bold; vertical-align: top;">Razón:</td>
-                  <td style="padding: 8px 0; color: #333;">${reason}</td>
-                </tr>
-                `
-                    : ""
-                }
-                <tr>
-                  <td style="padding: 8px 0; color: #666; font-weight: bold;">Total:</td>
-                  <td style="padding: 8px 0; color: #4CAF50; font-weight: bold;">$${(
-                    reservationData.totalPrice || 0
-                  ).toLocaleString()}</td>
-                </tr>
-              </table>
-            </div>
-
-            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0; color: #666; font-size: 12px;">
-              <p style="margin: 5px 0;">© ${new Date().getFullYear()} GoalTime. Todos los derechos reservados.</p>
-              <p style="margin: 5px 0;">Si tienes alguna pregunta, no dudes en contactarnos.</p>
-            </div>
-          </body>
-        </html>
-      `;
-
-      const msg = {
-        to: clientEmail,
-        from: {
-          email: fromEmail,
-          name: "GoalTime",
-        },
-        subject: `Cambio de Estado - Reserva ${reservationData.fieldName || "Cancha"}`,
-        html: emailHTML,
-        text: `
-          Notificación de Cambio de Estado - GoalTime
-          
-          Hola ${finalClientName},
-          
-          Te informamos que el estado de tu reserva ha sido actualizado.
-          
-          Detalles de la Reserva:
-          - Cancha: ${reservationData.fieldName || "N/A"}
-          - Fecha: ${reservationData.date || "N/A"}
-          - Hora: ${reservationData.startTime || "N/A"} - ${reservationData.endTime || "N/A"}
-          - Estado Anterior: ${previousStatusText}
-          - Nuevo Estado: ${statusText}
-          ${reason ? `- Razón: ${reason}` : ""}
-          - Total: $${(reservationData.totalPrice || 0).toLocaleString()}
-          
-          © ${new Date().getFullYear()} GoalTime. Todos los derechos reservados.
-        `,
-      };
-
-      await sgMail.send(msg);
-
-      console.log("Email de cambio de estado enviado exitosamente:", {
-        to: clientEmail,
-        reservationId,
-        newStatus,
+      await sendEmail({
+        to: contact.email,
+        subject: `Cambio de Estado - Reserva ${r.fieldName || "Cancha"}`,
+        html: emailLayout("Notificación de Cambio de Estado", inner),
+        text,
       });
 
-      return response.status(200).json({
-        success: true,
-        message: "Notificación enviada exitosamente.",
-      });
+      return response.status(200).json({ success: true, message: "Notificación enviada exitosamente." });
     } catch (error) {
-      console.error("Error sending status change email:", error);
-      console.error("Error details:", error.response?.body || error.message);
-
-      let errorMessage = "Error al enviar la notificación por correo.";
-      let errorDetails = error.message;
-
-      if (error.response?.body?.errors) {
-        const sendGridErrors = error.response.body.errors;
-        errorDetails = sendGridErrors.map((e) => e.message || e).join(", ");
-      }
-
-      return response.status(500).json({
-        error: errorMessage,
-        details: errorDetails,
-      });
+      return sendError(response, error, "sendReservationStatusChangeEmail");
     }
   }
 );
+
+// Exportado para pruebas unitarias.
+exports._internal = { escapeHtml, formatCurrency, formatDateEs, todayISOInAppZone };

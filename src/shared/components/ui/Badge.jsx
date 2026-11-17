@@ -1,35 +1,35 @@
 import PropTypes from "prop-types";
+import { cx } from "./cx";
 
 const variants = {
-  success: "bg-goaltime-100 text-goaltime-700",
-  warning: "bg-yellow-100 text-yellow-700",
-  error: "bg-red-100 text-red-700",
-  info: "bg-blue-100 text-blue-700",
-  gray: "bg-gray-100 text-gray-600",
-  dark: "bg-dark text-white",
-  goaltime: "bg-goaltime text-white",
-  orange: "bg-orange text-white",
+  success: "bg-green-50 text-green-700 ring-green-600/20",
+  warning: "bg-amber-50 text-amber-800 ring-amber-600/25",
+  error: "bg-red-50 text-red-700 ring-red-600/20",
+  info: "bg-primary-50 text-primary-700 ring-primary-600/20",
+  gray: "bg-zinc-100 text-zinc-700 ring-zinc-500/15",
+  dark: "bg-zinc-900 text-white ring-zinc-900",
+  goaltime: "bg-primary-600 text-white ring-primary-600",
+  orange: "bg-cta-50 text-cta-700 ring-cta-600/25",
 };
 
 const sizes = {
-  sm: "px-2 py-0.5 text-xs",
-  md: "px-2.5 py-1 text-xs",
-  lg: "px-3 py-1.5 text-sm",
+  sm: "h-5 px-1.5 text-2xs gap-1",
+  md: "h-[22px] px-2 text-xs gap-1.5",
+  lg: "h-6 px-2.5 text-[13px] gap-1.5",
 };
 
+/** Etiqueta compacta (conteos, categorías). Para estados de negocio usa StatusPill. */
 function Badge({ children, variant = "gray", size = "md", dot = false, className = "" }) {
   return (
     <span
-      className={[
-        "inline-flex items-center gap-1.5 font-medium rounded-full",
+      className={cx(
+        "inline-flex items-center whitespace-nowrap rounded font-medium ring-1 ring-inset",
         variants[variant] ?? variants.gray,
         sizes[size] ?? sizes.md,
-        className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+        className
+      )}
     >
-      {dot && <span className="w-1.5 h-1.5 rounded-full bg-current inline-block" />}
+      {dot && <span className="inline-block h-1.5 w-1.5 rounded-[1px] bg-current" aria-hidden="true" />}
       {children}
     </span>
   );
@@ -37,16 +37,7 @@ function Badge({ children, variant = "gray", size = "md", dot = false, className
 
 Badge.propTypes = {
   children: PropTypes.node.isRequired,
-  variant: PropTypes.oneOf([
-    "success",
-    "warning",
-    "error",
-    "info",
-    "gray",
-    "dark",
-    "goaltime",
-    "orange",
-  ]),
+  variant: PropTypes.oneOf(["success", "warning", "error", "info", "gray", "dark", "goaltime", "orange"]),
   size: PropTypes.oneOf(["sm", "md", "lg"]),
   dot: PropTypes.bool,
   className: PropTypes.string,

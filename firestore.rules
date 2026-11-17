@@ -1,11 +1,368 @@
 rules_version = '2';
+
+// =============================================================================
+// GoalTime - Firestore Security Rules
+// -----------------------------------------------------------------------------
+// - El rol se lee de users/{uid}.role mediante get() (NO se usan custom claims).
+// - Las Cloud Functions usan Admin SDK y no están sujetas a estas reglas.
+// - Colecciones: users, canchas, reservations, slots, notifications, favorites.
+// - Todo lo no listado está denegado.
+// =============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 👇 MODO DESARROLLO - PERMITE TODO
-    // Estas reglas permiten lectura y escritura a todos los usuarios autenticados
+
+    // ---------------------------------------------------------------- helpers
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userPath(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
+
+    function fieldPath(fieldId) {
+      return /databases/$(database)/documents/canchas/$(fieldId);
+    }
+
+    function reservationPath(reservationId) {
+      return /databases/$(database)/documents/reservations/$(reservationId);
+    }
+
+    function slotPath(slotId) {
+      return /databases/$(database)/documents/slots/$(slotId);
+    }
+
+    // Perfil del usuario autenticado (o {} si no existe).
+    function me() {
+      return exists(userPath(uid())) ? get(userPath(uid())).data : {};
+    }
+
+    function myRole() {
+      return me().get('role', 'cliente');
+    }
+
+    function isActive() {
+      return me().get('status', 'active') != 'disabled';
+    }
+
+    function isAdmin() {
+      return signedIn() && myRole() == 'admin' && isActive();
+    }
+
+    function isAsociado() {
+      return signedIn() && myRole() == 'asociado' && isActive();
+    }
+
+    function isStaff() {
+      return isAdmin() || isAsociado();
+    }
+
+    // true si el usuario autenticado es dueño de la cancha fieldId.
+    function ownsField(fieldId) {
+      return signedIn()
+        && fieldId is string
+        && exists(fieldPath(fieldId))
+        && get(fieldPath(fieldId)).data.ownerId == uid();
+    }
+
+    function isTime(t) {
+      return t is string && t.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    function isDate(d) {
+      return d is string && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function optString(data, key, maxLen) {
+      return !(key in data) || data[key] == null
+        || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    // ------------------------------------------------------------------ users
+    // Campos que el propio usuario NO puede tocar: role, status, disabled, uid, email, createdAt.
+    match /users/{userId} {
+      // get: el propio usuario, admin, o asociado (necesita nombre/email/teléfono de los
+      // clientes de sus reservas). list (consultas): solo admin.
+      allow get: if signedIn() && (uid() == userId || isStaff());
+      allow list: if isAdmin();
+
+      // Registro: el usuario crea SU perfil con rol "cliente".
+      allow create: if signedIn()
+        && uid() == userId
+        && request.resource.data.keys().hasOnly(
+             ['uid', 'name', 'email', 'role', 'createdAt', 'photoURL', 'phone', 'updatedAt'])
+        && request.resource.data.uid == userId
+        && request.resource.data.role == 'cliente'
+        && optString(request.resource.data, 'name', 120)
+        && optString(request.resource.data, 'phone', 30)
+        && (!('email' in request.auth.token)
+            || request.resource.data.get('email', null) == request.auth.token.email);
+
+      allow update: if signedIn() && (
+        isAdmin()
+        || (uid() == userId
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                 .hasAny(['role', 'status', 'disabled', 'uid', 'email', 'createdAt'])
+            && optString(request.resource.data, 'name', 120)
+            && optString(request.resource.data, 'phone', 30)
+            && optString(request.resource.data, 'photoURL', 2048))
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------- canchas
+    function validFieldData(d) {
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.pricePerHour is number && d.pricePerHour > 0
+        && isTime(d.openingTime) && isTime(d.closingTime)
+        && d.openingTime < d.closingTime
+        && optString(d, 'address', 250)
+        && optString(d, 'description', 3000)
+        && optString(d, 'imageUrl', 2048)
+        && optString(d, 'phone', 120)
+        && optString(d, 'city', 120);
+    }
+
+    match /canchas/{fieldId} {
+      // Canchas aprobadas: lectura pública (listado). El resto: dueño o admin.
+      allow read: if resource.data.status == 'approved'
+        || (signedIn() && resource.data.ownerId == uid())
+        || isAdmin();
+
+      // Crear: asociado (o admin) como dueño y siempre en "pending".
+      allow create: if isStaff()
+        && request.resource.data.ownerId == uid()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly([
+             'name', 'address', 'description', 'pricePerHour', 'imageUrl',
+             'openingTime', 'closingTime', 'phone', 'city',
+             'ownerId', 'status', 'createdAt', 'updatedAt'])
+        && validFieldData(request.resource.data);
+
+      // Editar (dueño): sin tocar ownerId; status solo approved|rejected → pending (reenvío
+      // a revisión). Aprobar/rechazar/deshabilitar se hace en Cloud Functions o por admin.
+      allow update: if isAdmin()
+        || (isAsociado()
+            && resource.data.ownerId == uid()
+            && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                 'name', 'address', 'description', 'pricePerHour', 'imageUrl',
+                 'openingTime', 'closingTime', 'phone', 'city', 'status', 'updatedAt'])
+            && (request.resource.data.status == resource.data.status
+                || (request.resource.data.status == 'pending'
+                    && resource.data.status in ['approved', 'rejected']))
+            && validFieldData(request.resource.data));
+
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------------- reservations
+    // Lectura: cliente dueño, dueño de la cancha (ownerId guardado en la reserva) o admin.
+    //
+    // MIGRACIÓN: las reservas antiguas NO tienen `ownerId`. Para ellas se permite también la
+    // lectura al dueño de la cancha vía get(canchas/{fieldId}) (`ownsField`). En consultas
+    // (list) esto solo es evaluable si la consulta filtra por fieldId == X; por eso el
+    // servicio subscribeToOwnerReservations hace una consulta por cancha además de la de
+    // ownerId. Ejecutar functions/scripts/migrate-reservations.js para rellenar ownerId y
+    // los locks de `slots`; después puede eliminarse la rama `ownsField(...)` de read.
+    function isReservationOwner(r) {
+      // Nota: si r no tiene ownerId, la primera comparación da error y || evalúa la segunda.
+      return signedIn() && (r.ownerId == uid() || ownsField(r.fieldId));
+    }
+
+    function validReservationTransition(from, to) {
+      return (from == 'pending' && to in ['confirmed', 'cancelled'])
+        || (from == 'confirmed' && to in ['completed', 'cancelled']);
+    }
+
+    function statusChangeKeysOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'status', 'statusChangedAt', 'statusChangedBy', 'statusChangeReason',
+        'previousStatus', 'updatedAt', 'reviewedAt', 'reviewedBy', 'ownerId']);
+    }
+
+    match /reservations/{reservationId} {
+      allow read: if signedIn() && (
+        resource.data.clientId == uid()
+        || resource.data.ownerId == uid()
+        || isAdmin()
+        || ownsField(resource.data.fieldId)
+      );
+
+      // Crear: cliente autenticado para sí mismo, en "pending", sobre cancha aprobada,
+      // con ownerId = dueño real de la cancha y su primer lock de `slots` creado en la
+      // misma transacción (ver reservationsService.createReservation).
+      allow create: if signedIn()
+        && request.resource.data.clientId == uid()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly([
+             'fieldId', 'fieldName', 'fieldAddress', 'ownerId', 'clientId', 'clientName',
+             'date', 'startTime', 'endTime', 'duration', 'totalPrice', 'notes',
+             'status', 'createdAt', 'updatedAt'])
+        && isDate(request.resource.data.date)
+        && isTime(request.resource.data.startTime)
+        && isTime(request.resource.data.endTime)
+        && request.resource.data.startTime < request.resource.data.endTime
+        && request.resource.data.startTime.matches('^[0-9]{2}:(00|30)$')
+        && request.resource.data.duration is number
+        && request.resource.data.duration > 0
+        && request.resource.data.duration <= 6
+        && request.resource.data.totalPrice is number
+        && request.resource.data.totalPrice >= 0
+        && optString(request.resource.data, 'clientName', 120)
+        && optString(request.resource.data, 'notes', 500)
+        && get(fieldPath(request.resource.data.fieldId)).data.status == 'approved'
+        && get(fieldPath(request.resource.data.fieldId)).data.ownerId == request.resource.data.ownerId
+        && request.resource.data.startTime >= get(fieldPath(request.resource.data.fieldId)).data.openingTime
+        && request.resource.data.endTime <= get(fieldPath(request.resource.data.fieldId)).data.closingTime
+        // Precio: no inferior a pricePerHour * duración (tolerancia 1 por redondeo).
+        && (!(get(fieldPath(request.resource.data.fieldId)).data.pricePerHour is number)
+            || request.resource.data.totalPrice
+               >= get(fieldPath(request.resource.data.fieldId)).data.pricePerHour
+                  * request.resource.data.duration - 1)
+        && getAfter(slotPath(request.resource.data.fieldId + '_' + request.resource.data.date + '_'
+             + request.resource.data.startTime.replace(':', ''))).data.reservationId == reservationId;
+
+      // Cambios de estado:
+      //  - admin o dueño de la cancha: transiciones válidas; ownerId solo se puede rellenar
+      //    (si faltaba) con el dueño real de la cancha.
+      //  - cliente: solo cancelar su propia reserva (pending|confirmed → cancelled).
+      allow update: if signedIn()
+        && statusChangeKeysOnly()
+        && validReservationTransition(resource.data.status, request.resource.data.status)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['statusChangedBy'])
+            || request.resource.data.statusChangedBy == uid())
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['reviewedBy'])
+            || request.resource.data.reviewedBy == uid())
+        && optString(request.resource.data, 'statusChangeReason', 500)
+        && (
+          ((isAdmin() || isReservationOwner(resource.data))
+            && (request.resource.data.get('ownerId', null) == resource.data.get('ownerId', null)
+                || (!('ownerId' in resource.data)
+                    && request.resource.data.ownerId
+                       == get(fieldPath(resource.data.fieldId)).data.ownerId)))
+          || (resource.data.clientId == uid()
+              && request.resource.data.status == 'cancelled'
+              && !request.resource.data.diff(resource.data).affectedKeys()
+                    .hasAny(['ownerId', 'reviewedAt', 'reviewedBy']))
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // ------------------------------------------------------------------ slots
+    // Locks de disponibilidad: slots/{fieldId}_{YYYY-MM-DD}_{HHmm}, uno por franja de 30 min.
+    // No contienen datos personales; cualquier usuario autenticado puede leerlos para
+    // calcular disponibilidad. Ver reservationsService.js.
+    function validSlot(d, slotId) {
+      return d.keys().hasOnly(
+               ['fieldId', 'date', 'time', 'reservationId', 'ownerId', 'status', 'createdAt'])
+        && d.fieldId is string && isDate(d.date) && isTime(d.time)
+        && d.reservationId is string
+        && d.status in ['pending', 'confirmed']
+        && slotId == d.fieldId + '_' + d.date + '_' + d.time.replace(':', '');
+    }
+
+    match /slots/{slotId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && validSlot(request.resource.data, slotId)
+        && (
+          // Cliente creando su reserva en la misma transacción.
+          (request.resource.data.status == 'pending'
+            && getAfter(reservationPath(request.resource.data.reservationId)).data.clientId == uid()
+            && getAfter(reservationPath(request.resource.data.reservationId)).data.fieldId
+               == request.resource.data.fieldId
+            && getAfter(reservationPath(request.resource.data.reservationId)).data.date
+               == request.resource.data.date
+            // El lock debe caer dentro del rango [startTime, endTime) de su reserva.
+            && request.resource.data.time
+               >= getAfter(reservationPath(request.resource.data.reservationId)).data.startTime
+            && request.resource.data.time
+               < getAfter(reservationPath(request.resource.data.reservationId)).data.endTime)
+          // Dueño/admin confirmando una reserva antigua sin locks.
+          || isAdmin()
+          || ownsField(request.resource.data.fieldId)
+        );
+
+      allow update: if signedIn()
+        && validSlot(request.resource.data, slotId)
+        && request.resource.data.reservationId == resource.data.reservationId
+        && request.resource.data.fieldId == resource.data.fieldId
+        && (isAdmin() || ownsField(resource.data.fieldId));
+
+      // Liberar: admin, dueño de la cancha, o el cliente al cancelar su reserva.
+      allow delete: if signedIn() && (
+        isAdmin()
+        || ownsField(resource.data.fieldId)
+        || (getAfter(reservationPath(resource.data.reservationId)).data.clientId == uid()
+            && getAfter(reservationPath(resource.data.reservationId)).data.status == 'cancelled')
+      );
+    }
+
+    // ---------------------------------------------------------- notifications
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.userId == uid();
+
+      // Creación desde el cliente (notifyX): cualquier autenticado hacia cualquier userId,
+      // con campos y tipos validados. Las de admins las crea el servidor.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+             'userId', 'type', 'title', 'message', 'relatedId', 'actionUrl',
+             'icon', 'color', 'read', 'createdAt'])
+        && request.resource.data.userId is string
+        && request.resource.data.type in [
+             'field_approved', 'field_rejected', 'field_pending',
+             'reservation_created', 'reservation_received', 'reservation_confirmed',
+             'reservation_cancelled', 'reservation_completed', 'info']
+        && request.resource.data.title is string && request.resource.data.title.size() <= 120
+        && request.resource.data.message is string && request.resource.data.message.size() <= 500
+        && request.resource.data.read == false
+        && request.resource.data.createdAt == request.time
+        && optString(request.resource.data, 'relatedId', 200)
+        && optString(request.resource.data, 'icon', 60)
+        && optString(request.resource.data, 'color', 30)
+        && (!('actionUrl' in request.resource.data)
+            || (request.resource.data.actionUrl is string
+                && request.resource.data.actionUrl.size() <= 300
+                && request.resource.data.actionUrl.matches('^/[^/].*|^/$')));
+
+      // El destinatario solo puede marcarla como leída.
+      allow update: if signedIn()
+        && resource.data.userId == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt'])
+        && request.resource.data.read is bool;
+
+      allow delete: if signedIn() && (resource.data.userId == uid() || isAdmin());
+    }
+
+    // -------------------------------------------------------------- favorites
+    // favorites/{uid}_{fieldId}
+    match /favorites/{favoriteId} {
+      // get de un favorito inexistente (isFavorite/addToFavorites) debe poder responder "no existe".
+      allow get: if signedIn() && (resource == null || resource.data.userId == uid());
+      allow list: if signedIn() && resource.data.userId == uid();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['userId', 'fieldId', 'createdAt'])
+        && request.resource.data.userId == uid()
+        && request.resource.data.fieldId is string
+        && favoriteId == uid() + '_' + request.resource.data.fieldId;
+
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.userId == uid();
+    }
+
+    // ------------------------------------------------------------ por defecto
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }
-

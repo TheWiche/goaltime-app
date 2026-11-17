@@ -1,5 +1,10 @@
 import PropTypes from "prop-types";
+import { cx } from "./cx";
 
+/**
+ * Tarjeta de sección con cabecera opcional (título + acciones) y pie.
+ * Para tablas a sangre usa padding="p-0" y <Table bare>.
+ */
 function SectionCard({
   eyebrow,
   title,
@@ -7,53 +12,44 @@ function SectionCard({
   icon,
   actions,
   footer,
-  padding = "p-6",
+  padding = "p-5",
   className = "",
   bodyClassName = "",
   children,
   as: Tag = "section",
 }) {
+  const hasHeader = Boolean(title || eyebrow || icon || actions);
   return (
-    <Tag
-      className={[
-        "rounded-xl bg-white border border-slate-200 shadow-sm",
-        "transition-shadow duration-200 hover:shadow-md",
-        "flex flex-col",
-        className,
-      ].join(" ")}
-    >
-      {(title || eyebrow || icon || actions) && (
-        <header className="flex items-start gap-3 px-6 pt-5 pb-4 border-b border-slate-100">
+    <Tag className={cx("flex flex-col rounded-lg border border-line bg-white", className)}>
+      {hasHeader && (
+        <header className="flex items-start gap-3 border-b border-line px-5 py-4">
           {icon && (
-            <div className="shrink-0 w-9 h-9 rounded-lg bg-primary-50 text-primary flex items-center justify-center">
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line bg-zinc-50 text-fg-muted"
+              aria-hidden="true"
+            >
               {icon}
             </div>
           )}
           <div className="min-w-0 flex-1">
             {eyebrow && (
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 mb-0.5">
+              <p className="mb-0.5 text-2xs font-medium uppercase tracking-wider text-fg-subtle">
                 {eyebrow}
               </p>
             )}
             {title && (
-              <h3 className="text-base font-semibold font-heading text-slate-900 leading-snug truncate">
-                {title}
-              </h3>
+              <h3 className="truncate text-sm font-semibold leading-5 text-fg-strong">{title}</h3>
             )}
-            {subtitle && (
-              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{subtitle}</p>
-            )}
+            {subtitle && <p className="mt-0.5 text-[13px] leading-5 text-fg-muted">{subtitle}</p>}
           </div>
-          {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}
+          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </header>
       )}
 
-      <div className={[padding, bodyClassName].filter(Boolean).join(" ")}>{children}</div>
+      <div className={cx("flex-1", padding, bodyClassName)}>{children}</div>
 
       {footer && (
-        <footer className="px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-xl">
-          {footer}
-        </footer>
+        <footer className="rounded-b-lg border-t border-line bg-zinc-50 px-5 py-3">{footer}</footer>
       )}
     </Tag>
   );

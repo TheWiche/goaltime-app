@@ -1,52 +1,54 @@
-import { forwardRef } from "react";
+import { forwardRef, useId } from "react";
 import PropTypes from "prop-types";
+import { cx, controlBase, controlError } from "./cx";
 
+/**
+ * Input simple con label/icono. Para formularios nuevos prefiere `TextField`
+ * (hint, required, prefix, tamaños). Se mantiene por compatibilidad.
+ */
 const Input = forwardRef(
-  (
-    {
-      label,
-      error,
-      helper,
-      icon: Icon,
-      iconEnd: IconEnd,
-      fullWidth = false,
-      className = "",
-      ...rest
-    },
-    ref
-  ) => {
-    const inputBase =
-      "w-full rounded-xl border bg-white px-4 py-2.5 text-sm text-dark placeholder-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-goaltime focus:border-transparent";
-
-    const inputState = error
-      ? "border-orange focus:ring-orange"
-      : "border-gray-200 hover:border-gray-300";
-
-    const paddingLeft = Icon ? "pl-10" : "pl-4";
-    const paddingRight = IconEnd ? "pr-10" : "pr-4";
+  ({ label, error, helper, icon: Icon, iconEnd: IconEnd, fullWidth = false, className = "", id, ...rest }, ref) => {
+    const auto = useId();
+    const inputId = id || `i${auto.replace(/:/g, "")}`;
+    const msgId = `${inputId}-msg`;
+    const hasMsg = Boolean(error || helper);
 
     return (
-      <div className={`flex flex-col gap-1 ${fullWidth ? "w-full" : ""} ${className}`}>
-        {label && <label className="text-xs font-medium text-gray-600 ml-1">{label}</label>}
+      <div className={cx("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
+        {label && (
+          <label htmlFor={inputId} className="text-[13px] font-medium leading-5 text-fg">
+            {label}
+          </label>
+        )}
         <div className="relative">
           {Icon && (
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true">
               <Icon size={16} />
             </span>
           )}
           <input
             ref={ref}
-            className={[inputBase, inputState, paddingLeft, paddingRight].join(" ")}
+            id={inputId}
+            aria-invalid={Boolean(error) || undefined}
+            aria-describedby={hasMsg ? msgId : undefined}
+            className={cx(controlBase, "h-9 text-sm", Icon ? "pl-9" : "pl-3", IconEnd ? "pr-9" : "pr-3", error && controlError)}
             {...rest}
           />
           {IconEnd && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-subtle" aria-hidden="true">
               <IconEnd size={16} />
             </span>
           )}
         </div>
-        {error && <p className="text-xs text-orange ml-1">{error}</p>}
-        {helper && !error && <p className="text-xs text-gray-400 ml-1">{helper}</p>}
+        {error ? (
+          <p id={msgId} className="text-xs text-red-600">
+            {error}
+          </p>
+        ) : helper ? (
+          <p id={msgId} className="text-xs text-fg-subtle">
+            {helper}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -62,6 +64,7 @@ Input.propTypes = {
   iconEnd: PropTypes.elementType,
   fullWidth: PropTypes.bool,
   className: PropTypes.string,
+  id: PropTypes.string,
 };
 
 export default Input;

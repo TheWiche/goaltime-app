@@ -1,82 +1,90 @@
 import { useEffect, useRef } from "react";
 import PropTypes from "prop-types";
-import { useToastEntrance } from "shared/hooks/useGSAPAnimations";
+import { cx, focusRing } from "./cx";
 
-const icons = {
-  success: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-    </svg>
-  ),
-  error: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  ),
-  warning: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-      />
-    </svg>
-  ),
-  info: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-      />
-    </svg>
-  ),
+const paths = {
+  success: "M4 10.5l3.5 3.5L16 6",
+  error: "M6 6l8 8M14 6l-8 8",
+  warning: "M10 6.5v4.5M10 14h.01M10 2.5L1.75 17h16.5L10 2.5z",
+  info: "M10 9v5M10 6h.01M10 18a8 8 0 100-16 8 8 0 000 16z",
 };
 
-const styles = {
-  success: "bg-goaltime-50 border-goaltime-400 text-goaltime-700",
-  error: "bg-red-50 border-red-400 text-red-700",
-  warning: "bg-yellow-50 border-yellow-400 text-yellow-700",
-  info: "bg-blue-50 border-blue-400 text-blue-700",
+const tones = {
+  success: "text-green-600",
+  error: "text-red-600",
+  warning: "text-amber-600",
+  info: "text-primary-600",
 };
 
+const accents = {
+  success: "bg-green-500",
+  error: "bg-red-500",
+  warning: "bg-amber-500",
+  info: "bg-primary-500",
+};
+
+export function ToastIcon({ type = "info", className = "h-4 w-4" }) {
+  return (
+    <svg
+      className={cx(className, tones[type] ?? tones.info)}
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={paths[type] ?? paths.info} />
+    </svg>
+  );
+}
+
+ToastIcon.propTypes = {
+  type: PropTypes.oneOf(["success", "error", "warning", "info"]),
+  className: PropTypes.string,
+};
+
+/** Notificación flotante (abajo-derecha). Autocierre según `duration` (0 = persistente). */
 function Toast({ open, onClose, message, type = "info", duration = 4000 }) {
   const timerRef = useRef(null);
-  const toastRef = useToastEntrance();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (open && duration > 0) {
-      timerRef.current = setTimeout(() => onClose?.(), duration);
+      timerRef.current = setTimeout(() => onCloseRef.current?.(), duration);
     }
     return () => clearTimeout(timerRef.current);
-  }, [open, duration, onClose]);
+  }, [open, duration, message]);
 
   if (!open) return null;
 
+  const isUrgent = type === "error" || type === "warning";
+
   return (
-    <div className="fixed bottom-6 right-6 z-50" ref={toastRef}>
+    <div className="fixed bottom-4 right-4 z-[70] w-[calc(100vw-2rem)] max-w-sm sm:bottom-6 sm:right-6">
       <div
-        className={[
-          "flex items-start gap-3 px-4 py-3 rounded-xl border shadow-card-hover max-w-sm",
-          styles[type] ?? styles.info,
-        ].join(" ")}
+        role={isUrgent ? "alert" : "status"}
+        aria-live={isUrgent ? "assertive" : "polite"}
+        className="relative flex animate-slide-up items-start gap-3 overflow-hidden rounded-md border border-line bg-white py-3 pl-4 pr-3 shadow-md"
       >
-        <span className="flex-shrink-0 mt-0.5">{icons[type]}</span>
-        <p className="text-sm font-medium leading-snug flex-1">{message}</p>
+        <span className={cx("absolute inset-y-0 left-0 w-[3px]", accents[type] ?? accents.info)} aria-hidden="true" />
+        <span className="mt-0.5 shrink-0">
+          <ToastIcon type={type} />
+        </span>
+        <p className="flex-1 text-sm font-medium leading-5 text-fg">{message}</p>
         <button
+          type="button"
           onClick={onClose}
-          className="flex-shrink-0 opacity-60 hover:opacity-100 transition-opacity"
-          aria-label="Cerrar"
+          className={cx(
+            "-my-0.5 shrink-0 rounded p-1 text-fg-subtle transition-colors hover:bg-zinc-100 hover:text-fg",
+            focusRing
+          )}
+          aria-label="Cerrar notificación"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
+          <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
           </svg>
         </button>
       </div>

@@ -1,50 +1,50 @@
-import { forwardRef } from "react";
+import { forwardRef, useId } from "react";
 import PropTypes from "prop-types";
-
-const baseControl =
-  "w-full bg-white text-[0.9375rem] text-slate-900 placeholder:text-slate-400 " +
-  "border border-slate-200 rounded-lg transition-all duration-200 " +
-  "focus:outline-none focus:ring-[3px] focus:ring-primary/20 focus:border-primary " +
-  "disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-slate-50";
+import { cx, controlBase, controlError } from "./cx";
 
 const sizeControl = {
-  sm: "px-3 py-2 text-sm",
-  md: "px-3.5 py-2.5",
-  lg: "px-4 py-3 text-base",
+  sm: "h-8 px-2.5 text-[13px]",
+  md: "h-9 px-3 text-sm",
+  lg: "h-10 px-3.5 text-sm",
 };
 
-function FieldShell({
-  id,
-  label,
-  hint,
-  error,
-  required,
-  inline,
-  optional,
-  className = "",
-  children,
-}) {
+/** Genera ids estables para label/hint/error cuando el consumidor no pasa `id`. */
+function useFieldIds(id) {
+  const auto = useId();
+  const fieldId = id || `f${auto.replace(/:/g, "")}`;
+  return { fieldId, hintId: `${fieldId}-hint`, errorId: `${fieldId}-error` };
+}
+
+function describedBy({ hint, error, hintId, errorId, extra }) {
+  return cx(error ? errorId : hint ? hintId : null, extra) || undefined;
+}
+
+/** Envoltorio de campo: label + control + ayuda/error. Útil para controles propios. */
+function FieldShell({ id, label, hint, error, required, inline, optional, className = "", children, hintId, errorId }) {
   return (
-    <div className={["flex flex-col gap-1.5", className].join(" ")}>
+    <div className={cx("flex flex-col gap-1.5", className)}>
       {label && (
-        <div className={inline ? "flex items-center justify-between gap-2" : ""}>
-          <label
-            htmlFor={id}
-            className="text-[12px] font-semibold text-slate-700 font-heading"
-          >
+        <div className={inline || optional ? "flex items-center justify-between gap-2" : undefined}>
+          <label htmlFor={id} className="text-[13px] font-medium leading-5 text-fg">
             {label}
-            {required && <span className="text-cta ml-0.5">*</span>}
+            {required && (
+              <span className="ml-0.5 text-red-600" aria-hidden="true">
+                *
+              </span>
+            )}
           </label>
-          {optional && (
-            <span className="text-[11px] font-medium text-slate-400">Opcional</span>
-          )}
+          {optional && <span className="text-xs text-fg-subtle">Opcional</span>}
         </div>
       )}
       {children}
       {error ? (
-        <p className="text-xs text-red-600 leading-snug">{error}</p>
+        <p id={errorId || (id ? `${id}-error` : undefined)} className="text-xs leading-snug text-red-600">
+          {error}
+        </p>
       ) : hint ? (
-        <p className="text-xs text-slate-500 leading-snug">{hint}</p>
+        <p id={hintId || (id ? `${id}-hint` : undefined)} className="text-xs leading-snug text-fg-subtle">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
@@ -60,6 +60,8 @@ FieldShell.propTypes = {
   optional: PropTypes.bool,
   className: PropTypes.string,
   children: PropTypes.node.isRequired,
+  hintId: PropTypes.string,
+  errorId: PropTypes.string,
 };
 
 const TextField = forwardRef(function TextField(
@@ -76,48 +78,51 @@ const TextField = forwardRef(function TextField(
     prefix,
     className = "",
     inputClassName = "",
+    "aria-describedby": ariaDescribedBy,
     ...rest
   },
   ref
 ) {
+  const { fieldId, hintId, errorId } = useFieldIds(id);
   const hasLeft = Boolean(leftIcon || prefix);
   const hasRight = Boolean(rightIcon);
 
   return (
     <FieldShell
-      id={id}
+      id={fieldId}
       label={label}
       hint={hint}
       error={error}
       required={required}
       optional={optional}
       className={className}
+      hintId={hintId}
+      errorId={errorId}
     >
       <div className="relative">
         {hasLeft && (
-          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 text-sm">
-            {leftIcon || <span className="text-slate-500 font-medium">{prefix}</span>}
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-fg-subtle [&>svg]:h-4 [&>svg]:w-4">
+            {leftIcon || <span className="font-medium text-fg-muted">{prefix}</span>}
           </span>
         )}
         <input
           ref={ref}
-          id={id}
+          id={fieldId}
           required={required}
           aria-invalid={Boolean(error) || undefined}
-          className={[
-            baseControl,
+          aria-describedby={describedBy({ hint, error, hintId, errorId, extra: ariaDescribedBy })}
+          className={cx(
+            controlBase,
             sizeControl[size] ?? sizeControl.md,
-            hasLeft ? "pl-10" : "",
-            hasRight ? "pr-10" : "",
-            error ? "border-red-300 focus:ring-red-200 focus:border-red-500" : "",
-            inputClassName,
-          ]
-            .filter(Boolean)
-            .join(" ")}
+            hasLeft && "pl-9",
+            hasRight && "pr-9",
+            error && controlError,
+            inputClassName
+          )}
           {...rest}
         />
         {hasRight && (
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400">
+          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-fg-subtle [&>svg]:h-4 [&>svg]:w-4">
             {rightIcon}
           </span>
         )}
@@ -139,6 +144,7 @@ TextField.propTypes = {
   prefix: PropTypes.node,
   className: PropTypes.string,
   inputClassName: PropTypes.string,
+  "aria-describedby": PropTypes.string,
 };
 
 const Textarea = forwardRef(function Textarea(
@@ -152,34 +158,32 @@ const Textarea = forwardRef(function Textarea(
     rows = 4,
     className = "",
     inputClassName = "",
+    "aria-describedby": ariaDescribedBy,
     ...rest
   },
   ref
 ) {
+  const { fieldId, hintId, errorId } = useFieldIds(id);
   return (
     <FieldShell
-      id={id}
+      id={fieldId}
       label={label}
       hint={hint}
       error={error}
       required={required}
       optional={optional}
       className={className}
+      hintId={hintId}
+      errorId={errorId}
     >
       <textarea
         ref={ref}
-        id={id}
+        id={fieldId}
         rows={rows}
         required={required}
         aria-invalid={Boolean(error) || undefined}
-        className={[
-          baseControl,
-          "px-3.5 py-2.5 resize-y leading-relaxed",
-          error ? "border-red-300 focus:ring-red-200 focus:border-red-500" : "",
-          inputClassName,
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        aria-describedby={describedBy({ hint, error, hintId, errorId, extra: ariaDescribedBy })}
+        className={cx(controlBase, "resize-y px-3 py-2 leading-relaxed", error && controlError, inputClassName)}
         {...rest}
       />
     </FieldShell>
@@ -196,6 +200,7 @@ Textarea.propTypes = {
   rows: PropTypes.number,
   className: PropTypes.string,
   inputClassName: PropTypes.string,
+  "aria-describedby": PropTypes.string,
 };
 
 const SelectField = forwardRef(function SelectField(
@@ -212,35 +217,38 @@ const SelectField = forwardRef(function SelectField(
     className = "",
     inputClassName = "",
     children,
+    "aria-describedby": ariaDescribedBy,
     ...rest
   },
   ref
 ) {
+  const { fieldId, hintId, errorId } = useFieldIds(id);
   return (
     <FieldShell
-      id={id}
+      id={fieldId}
       label={label}
       hint={hint}
       error={error}
       required={required}
       optional={optional}
       className={className}
+      hintId={hintId}
+      errorId={errorId}
     >
       <div className="relative">
         <select
           ref={ref}
-          id={id}
+          id={fieldId}
           required={required}
           aria-invalid={Boolean(error) || undefined}
-          className={[
-            baseControl,
+          aria-describedby={describedBy({ hint, error, hintId, errorId, extra: ariaDescribedBy })}
+          className={cx(
+            controlBase,
             sizeControl[size] ?? sizeControl.md,
-            "appearance-none pr-10 cursor-pointer",
-            error ? "border-red-300 focus:ring-red-200 focus:border-red-500" : "",
-            inputClassName,
-          ]
-            .filter(Boolean)
-            .join(" ")}
+            "cursor-pointer appearance-none pr-9",
+            error && controlError,
+            inputClassName
+          )}
           {...rest}
         >
           {placeholder && (
@@ -258,16 +266,13 @@ const SelectField = forwardRef(function SelectField(
         </select>
         <svg
           aria-hidden="true"
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-subtle"
         >
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 011.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
-            clipRule="evenodd"
-          />
+          <path d="M4 6l4 4 4-4" strokeLinecap="square" />
         </svg>
       </div>
     </FieldShell>
@@ -293,7 +298,11 @@ SelectField.propTypes = {
   className: PropTypes.string,
   inputClassName: PropTypes.string,
   children: PropTypes.node,
+  "aria-describedby": PropTypes.string,
 };
 
-export { TextField, Textarea, SelectField, FieldShell };
+/** Alias corto: `<Select>` === `<SelectField>` (label opcional). */
+const Select = SelectField;
+
+export { TextField, Textarea, SelectField, Select, FieldShell };
 export default TextField;

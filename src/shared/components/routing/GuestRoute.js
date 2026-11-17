@@ -1,63 +1,68 @@
-// src/components/GuestRoute.js
+// src/shared/components/routing/GuestRoute.js
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuth } from "shared/context/AuthContext";
 import PropTypes from "prop-types";
+import { useAuth } from "shared/context/AuthContext";
+import { FullScreenLoader } from "shared/components/loaders/FullScreenLoader";
+import { getHomePathForRole } from "shared/utils/url";
 
-function GuestRoute({ children }) {
-  const { currentUser, userProfile, emailVerified, initialAuthLoading } = useAuth();
+const VERIFY_EMAIL_PATH = "/authentication/verify-email";
+const SIGN_UP_PATH = "/authentication/sign-up";
+// Tras login social el perfil se crea justo después del evento de auth: se espera
+// un poco antes de considerar que el perfil "no existe".
+const PROFILE_GRACE_MS = 3000;
+
+/**
+ * Ruta solo para invitados (sign-in, sign-up, reset...).
+ * - Nunca devuelve pantalla en blanco: muestra FullScreenLoader mientras espera.
+ * - `allowAuthenticated`: renderiza siempre (p.ej. confirmar reset de contraseña desde el
+ *   enlace del correo aunque haya una sesión abierta).
+ * - verify-email y sign-up se muestran aunque haya sesión (gestionan su propia redirección).
+ * - Con sesión y email verificado → home del rol; perfil ausente de forma permanente → /canchas.
+ */
+function GuestRoute({ children, allowAuthenticated = false }) {
+  const { currentUser, userProfile, emailVerified, isSocialAuth, initialAuthLoading } = useAuth();
   const location = useLocation();
+  const [profileTimedOut, setProfileTimedOut] = useState(false);
 
-  // Esperar a que termine la carga inicial
-  if (initialAuthLoading) {
-    return null;
+  const isVerifyEmailPage = location.pathname === VERIFY_EMAIL_PATH;
+  const isSignUpPage = location.pathname === SIGN_UP_PATH;
+  const passthrough = allowAuthenticated || isVerifyEmailPage || isSignUpPage;
+  const isEmailVerified = Boolean(currentUser && (currentUser.emailVerified || emailVerified));
+  const waitingProfile =
+    !initialAuthLoading &&
+    !passthrough &&
+    Boolean(currentUser) &&
+    (isEmailVerified || isSocialAuth) &&
+    !userProfile;
+
+  useEffect(() => {
+    if (!waitingProfile) {
+      setProfileTimedOut(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setProfileTimedOut(true), PROFILE_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [waitingProfile]);
+
+  if (initialAuthLoading) return <FullScreenLoader />;
+  if (!currentUser || passthrough) return children;
+
+  if (!isEmailVerified && !isSocialAuth) {
+    return <Navigate to={VERIFY_EMAIL_PATH} replace />;
   }
 
-  // Si estamos en la página de verificación, permitir acceso incluso si hay usuario
-  const isVerifyEmailPage = location.pathname === "/authentication/verify-email";
-  const isSignUpPage = location.pathname === "/authentication/sign-up";
-
-  // Si hay un usuario logueado y NO estamos en la página de verificación ni en sign-up
-  // (permitir que sign-up redirija por sí mismo)
-  if (currentUser && !isVerifyEmailPage && !isSignUpPage) {
-    // Excluir usuarios que se autenticaron con Google/Facebook (ya vienen verificados)
-    const isSocialAuth = currentUser.providerData?.some(
-      (provider) => provider.providerId === "google.com" || provider.providerId === "facebook.com"
-    );
-
-    // IMPORTANTE: Verificar directamente desde currentUser.emailVerified para obtener el valor más reciente
-    const isEmailVerified = currentUser.emailVerified || emailVerified;
-
-    // Si el email no está verificado Y no es autenticación social, redirigir a verificación
-    if (!isEmailVerified && !isSocialAuth) {
-      return <Navigate to="/authentication/verify-email" replace />;
-    }
-
-    // Solo redirigir según rol si el email está verificado o es autenticación social
-    // IMPORTANTE: Esperar a que el perfil se cargue antes de redirigir para evitar redirecciones incorrectas
-    if (isEmailVerified || isSocialAuth) {
-      // Si tenemos el perfil, redirigir según el rol
-      if (userProfile) {
-        if (userProfile.role === "cliente") {
-          return <Navigate to="/canchas" replace />;
-        } else {
-          return <Navigate to="/dashboard" replace />;
-        }
-      }
-      // Si no tenemos el perfil aún pero el email está verificado, NO redirigir
-      // Permitir que la página se muestre y esperar a que el perfil se cargue
-      // Esto evita la doble redirección (inicio -> dashboard -> canchas)
-      return null; // O simplemente no hacer nada, dejar que se muestre la página
-    }
+  if (userProfile) {
+    return <Navigate to={getHomePathForRole(userProfile.role)} replace />;
   }
 
-  // Si no hay usuario o estamos en la página de verificación, muestra la página
-  return children;
+  return profileTimedOut ? <Navigate to="/canchas" replace /> : <FullScreenLoader />;
 }
 
 GuestRoute.propTypes = {
   children: PropTypes.node.isRequired,
+  allowAuthenticated: PropTypes.bool,
 };
 
 export default GuestRoute;

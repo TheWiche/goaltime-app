@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import PropTypes from "prop-types";
 import Button from "./Button";
+import { cx, focusRing } from "./cx";
 
 const sizeClasses = {
   sm: "max-w-md",
@@ -11,20 +12,31 @@ const sizeClasses = {
   full: "max-w-7xl",
 };
 
+const FOCUSABLE =
+  'a[href], area[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), iframe, [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+
+// Pila de modales abiertos: Escape y el focus trap solo actúan sobre el superior.
+const modalStack = [];
+let scrollLocks = 0;
+let previousOverflow = "";
+
+function lockBodyScroll() {
+  if (scrollLocks === 0) {
+    previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  scrollLocks += 1;
+}
+
+function unlockBodyScroll() {
+  scrollLocks = Math.max(0, scrollLocks - 1);
+  if (scrollLocks === 0) document.body.style.overflow = previousOverflow;
+}
+
 function CloseIcon(props) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-      {...props}
-    >
-      <path
-        fillRule="evenodd"
-        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-        clipRule="evenodd"
-      />
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true" {...props}>
+      <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
     </svg>
   );
 }
@@ -47,151 +59,184 @@ function Modal({
   footerSticky = false,
   children,
 }) {
-  const overlayRef = useRef(null);
+  const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const closeOnEscRef = useRef(closeOnEsc);
+  closeOnEscRef.current = closeOnEsc;
 
+  const uid = useId();
+  const titleId = `${uid}-title`;
+  const descId = `${uid}-desc`;
+
+  // Montaje: pila, bloqueo de scroll, foco inicial, trap y restauración del foco.
   useEffect(() => {
     if (!open) return undefined;
-    document.body.style.overflow = "hidden";
+    const token = {};
+    modalStack.push(token);
+    lockBodyScroll();
+
+    const previouslyFocused = document.activeElement;
+    const dialog = dialogRef.current;
+    const focusables = () =>
+      dialog
+        ? Array.from(dialog.querySelectorAll(FOCUSABLE)).filter(
+            (el) => el.offsetParent !== null || el === document.activeElement
+          )
+        : [];
+
+    // Foco inicial: elemento con [data-autofocus] o, si no, el propio diálogo.
+    const raf = requestAnimationFrame(() => {
+      if (!dialog || dialog.contains(document.activeElement)) return;
+      (dialog.querySelector("[data-autofocus]") || dialog).focus({ preventScroll: true });
+    });
+
+    const onKeyDown = (e) => {
+      if (modalStack[modalStack.length - 1] !== token) return;
+      if (e.key === "Escape" && closeOnEscRef.current) {
+        e.stopPropagation();
+        onCloseRef.current?.();
+        return;
+      }
+      if (e.key !== "Tab" || !dialog) return;
+      const items = focusables();
+      if (items.length === 0) {
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === dialog)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (!dialog.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = "";
+      cancelAnimationFrame(raf);
+      document.removeEventListener("keydown", onKeyDown);
+      const idx = modalStack.indexOf(token);
+      if (idx !== -1) modalStack.splice(idx, 1);
+      unlockBodyScroll();
+      if (
+        previouslyFocused &&
+        typeof previouslyFocused.focus === "function" &&
+        document.contains(previouslyFocused)
+      ) {
+        previouslyFocused.focus({ preventScroll: true });
+      }
     };
   }, [open]);
-
-  useEffect(() => {
-    if (!open || !closeOnEsc) return undefined;
-    const handler = (e) => {
-      if (e.key === "Escape") onClose?.();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [open, closeOnEsc, onClose]);
 
   if (!open) return null;
 
   const isHero = variant === "hero";
-
-  const headerWrapperClasses = isHero
-    ? "relative overflow-hidden bg-gradient-to-br from-primary-900 via-primary to-secondary px-7 pt-7 pb-8 text-white"
-    : "flex items-start gap-4 px-7 pt-6 pb-5 border-b border-slate-200 bg-white";
+  const hasHeader = Boolean(title || eyebrow || icon);
 
   return (
     <div
-      ref={overlayRef}
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/55 backdrop-blur-sm animate-fade-in"
-      onClick={(e) => {
-        if (closeOnBackdrop && e.target === overlayRef.current) onClose?.();
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-zinc-950/40 p-0 animate-fade-in sm:items-center sm:p-4"
+      onMouseDown={(e) => {
+        if (closeOnBackdrop && e.target === e.currentTarget) onClose?.();
       }}
       role="presentation"
     >
       <div
-        className={[
-          "relative w-full rounded-2xl bg-white shadow-xl ring-1 ring-slate-200/70 animate-slide-up",
-          "flex flex-col max-h-[calc(100vh-32px)] overflow-hidden",
+        ref={dialogRef}
+        tabIndex={-1}
+        className={cx(
+          "relative flex w-full flex-col overflow-hidden bg-white outline-none animate-scale-in",
+          "max-h-[calc(100dvh-16px)] rounded-t-lg border border-line shadow-lg sm:max-h-[calc(100vh-32px)] sm:rounded-lg",
           sizeClasses[size] ?? sizeClasses.md,
-          className,
-        ]
-          .filter(Boolean)
-          .join(" ")}
+          className
+        )}
         role="dialog"
         aria-modal="true"
-        aria-label={typeof title === "string" ? title : undefined}
-        onClick={(e) => e.stopPropagation()}
+        aria-labelledby={title ? titleId : undefined}
+        aria-describedby={subtitle ? descId : undefined}
+        aria-label={!title ? (typeof eyebrow === "string" ? eyebrow : "Diálogo") : undefined}
       >
-        {(title || eyebrow || icon) && (
-          <header className={headerWrapperClasses}>
-            {isHero && (
+        {hasHeader && (
+          <header
+            className={cx(
+              "flex shrink-0 items-start gap-3 border-b border-line",
+              isHero ? "bg-zinc-50 px-6 pb-5 pt-6" : "px-6 py-4",
+              !hideClose && "pr-14"
+            )}
+          >
+            {icon && (
               <div
-                className="pointer-events-none absolute inset-0 opacity-30"
-                style={{
-                  backgroundImage:
-                    "radial-gradient(circle at 20% 0%, rgba(255,255,255,0.35), transparent 60%), radial-gradient(circle at 80% 100%, rgba(249,115,22,0.35), transparent 55%)",
-                }}
-              />
-            )}
-
-            <div className={isHero ? "relative flex items-start gap-4 pr-12" : "flex items-start gap-4 flex-1 min-w-0"}>
-              {icon && (
-                <div
-                  className={[
-                    "shrink-0 w-11 h-11 rounded-xl flex items-center justify-center",
-                    isHero
-                      ? "bg-white/15 ring-1 ring-white/25 text-white"
-                      : "bg-primary-50 text-primary",
-                  ].join(" ")}
-                >
-                  {icon}
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                {eyebrow && (
-                  <p
-                    className={[
-                      "text-[11px] font-semibold uppercase tracking-[0.14em] mb-1",
-                      isHero ? "text-white/70" : "text-slate-500",
-                    ].join(" ")}
-                  >
-                    {eyebrow}
-                  </p>
-                )}
-                {title && (
-                  <h2
-                    className={[
-                      "font-heading font-semibold leading-tight tracking-tight truncate",
-                      isHero ? "text-white text-2xl" : "text-slate-900 text-xl",
-                    ].join(" ")}
-                  >
-                    {title}
-                  </h2>
-                )}
-                {subtitle && (
-                  <p
-                    className={[
-                      "mt-1 text-sm leading-relaxed",
-                      isHero ? "text-white/80" : "text-slate-500",
-                    ].join(" ")}
-                  >
-                    {subtitle}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {!hideClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Cerrar"
-                className={[
-                  "absolute top-4 right-4 inline-flex items-center justify-center rounded-lg p-2 transition-all duration-200 cursor-pointer",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-cta focus-visible:ring-offset-2",
+                className={cx(
+                  "flex shrink-0 items-center justify-center rounded-md",
                   isHero
-                    ? "text-white/85 hover:text-white bg-white/10 hover:bg-white/20 ring-1 ring-white/20"
-                    : "text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-transparent hover:border-slate-200",
-                ].join(" ")}
+                    ? "h-10 w-10 bg-primary-600 text-white"
+                    : "h-8 w-8 border border-line bg-zinc-50 text-fg-muted"
+                )}
+                aria-hidden="true"
               >
-                <CloseIcon className="h-4 w-4" />
-              </button>
+                {icon}
+              </div>
             )}
+            <div className="min-w-0 flex-1">
+              {eyebrow && (
+                <p className={cx("mb-0.5 text-xs font-medium", isHero ? "text-primary-700" : "text-fg-subtle")}>
+                  {eyebrow}
+                </p>
+              )}
+              {title && (
+                <h2
+                  id={titleId}
+                  className={cx(
+                    "truncate font-semibold leading-tight tracking-tight text-fg-strong",
+                    isHero ? "text-xl" : "text-base"
+                  )}
+                >
+                  {title}
+                </h2>
+              )}
+              {subtitle && (
+                <p id={descId} className="mt-1 text-[13px] leading-5 text-fg-muted">
+                  {subtitle}
+                </p>
+              )}
+            </div>
           </header>
         )}
 
-        <div
-          className={[
-            "flex-1 overflow-y-auto",
-            isHero ? "bg-slate-50" : "bg-white",
-            "px-7 py-6",
-            bodyClassName,
-          ].join(" ")}
-        >
+        {hasHeader && !hideClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className={cx(
+              "absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle transition-colors",
+              "hover:bg-zinc-100 hover:text-fg",
+              focusRing
+            )}
+          >
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        )}
+
+        <div className={cx("flex-1 overflow-y-auto px-6 py-5", bodyClassName)}>
           {children}
         </div>
 
         {footer && (
           <footer
-            className={[
-              "px-7 py-4 border-t border-slate-200 bg-white flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3",
-              footerSticky ? "shadow-[0_-4px_12px_-8px_rgba(15,23,42,0.15)]" : "",
-            ].join(" ")}
+            className={cx(
+              "flex shrink-0 flex-col-reverse gap-2 border-t border-line bg-zinc-50 px-6 py-3 sm:flex-row sm:items-center sm:justify-end",
+              footerSticky && "sticky bottom-0"
+            )}
           >
             {footer}
           </footer>

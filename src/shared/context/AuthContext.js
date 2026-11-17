@@ -1,16 +1,29 @@
-// src/context/AuthContext.js
+// src/shared/context/AuthContext.js
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
-import { auth, db } from "shared/services/firebaseService";
 import PropTypes from "prop-types";
+import { auth, db } from "shared/services/firebaseApp";
 import { FullScreenLoader } from "shared/components/loaders/FullScreenLoader";
+import { logger } from "shared/utils/logger";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
+AuthContext.displayName = "AuthContext";
+
+const SOCIAL_PROVIDERS = ["google.com", "facebook.com"];
+const VERIFICATION_POLL_MS = 5000;
+
+/** true si el usuario inició sesión con Google/Facebook (no requiere verificar email). */
+export const isSocialAuthUser = (user) =>
+  Boolean(user?.providerData?.some((p) => SOCIAL_PROVIDERS.includes(p.providerId)));
 
 export const useAuth = () => {
-  return useContext(AuthContext);
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
+    throw new Error("useAuth debe usarse dentro de <AuthProvider>.");
+  }
+  return ctx;
 };
 
 export const AuthProvider = ({ children }) => {
@@ -20,153 +33,140 @@ export const AuthProvider = ({ children }) => {
   const [initialAuthLoading, setInitialAuthLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
+  // 1) Estado de auth + perfil en tiempo real.
   useEffect(() => {
+    // Contador de ejecución: descarta resultados de un usuario anterior (logout/login rápido).
+    let runId = 0;
     let unsubscribeProfile = null;
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      try {
-        setCurrentUser(user);
+    const stopProfile = () => {
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+    };
 
-        // Actualizar estado de verificación del email
-        if (user) {
-          // Recargar el usuario para obtener el estado más reciente
-          try {
-            await user.reload();
-            setEmailVerified(user.emailVerified);
-          } catch (error) {
-            console.error("Error recargando usuario:", error);
-            setEmailVerified(user.emailVerified);
-          }
-        } else {
-          setEmailVerified(false);
-        }
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      runId += 1;
+      const myRun = runId;
+      stopProfile();
 
-        // Limpiar listener anterior si existe
-        if (unsubscribeProfile) {
-          unsubscribeProfile();
-          unsubscribeProfile = null;
-        }
+      setCurrentUser(user);
+      // Valor inmediato; el reload() se hace fuera del camino crítico (efecto 2).
+      setEmailVerified(Boolean(user?.emailVerified));
 
-        if (user) {
-          const userDocRef = doc(db, "users", user.uid);
-
-          // Usar listener en tiempo real para actualizaciones automáticas
-          unsubscribeProfile = onSnapshot(
-            userDocRef,
-            (userDocSnap) => {
-              if (userDocSnap.exists()) {
-                setUserProfile(userDocSnap.data());
-              } else {
-                setUserProfile(null);
-              }
-              setInitialAuthLoading(false);
-            },
-            (error) => {
-              // Ignorar errores de bloqueo por cliente (extensiones del navegador)
-              if (
-                error.code === "unavailable" ||
-                error.message?.includes("ERR_BLOCKED_BY_CLIENT")
-              ) {
-                console.warn(
-                  "Firestore bloqueado por extensión del navegador. Intentando obtener perfil de forma alternativa..."
-                );
-                // Intentar obtener el perfil de forma alternativa (una sola vez)
-                getDoc(userDocRef)
-                  .then((docSnap) => {
-                    if (docSnap.exists()) {
-                      setUserProfile(docSnap.data());
-                    } else {
-                      setUserProfile(null);
-                    }
-                    setInitialAuthLoading(false);
-                  })
-                  .catch((fallbackError) => {
-                    console.error("Error al obtener perfil (fallback):", fallbackError);
-                    setUserProfile(null);
-                    setInitialAuthLoading(false);
-                  });
-                return;
-              }
-              console.error("Error al obtener el perfil de usuario:", error);
-              setUserProfile(null);
-              setInitialAuthLoading(false);
-            }
-          );
-        } else {
-          setUserProfile(null);
-          setInitialAuthLoading(false);
-        }
-      } catch (error) {
-        console.error("Error al obtener el perfil de usuario:", error);
+      if (!user) {
         setUserProfile(null);
         setInitialAuthLoading(false);
+        return;
       }
+
+      const userDocRef = doc(db, "users", user.uid);
+      const finish = (snap) => {
+        if (myRun !== runId) return;
+        setUserProfile(snap && snap.exists() ? { uid: snap.id, ...snap.data() } : null);
+        setInitialAuthLoading(false);
+      };
+
+      unsubscribeProfile = onSnapshot(userDocRef, finish, (error) => {
+        // p.ej. extensiones que bloquean el canal en tiempo real: intento único con getDoc.
+        logger.warn("AuthContext: listener de perfil falló, usando getDoc", error);
+        getDoc(userDocRef)
+          .then(finish)
+          .catch((fallbackError) => {
+            logger.error("AuthContext: no se pudo leer el perfil", fallbackError);
+            finish(null);
+          });
+      });
     });
 
     return () => {
-      unsubscribe();
-      if (unsubscribeProfile) {
-        unsubscribeProfile();
-      }
+      runId += 1;
+      unsubscribeAuth();
+      stopProfile();
     };
   }, []);
 
-  // Actualizar emailVerified cuando el usuario cambia
+  // 2) Mientras el email NO esté verificado (solo email/contraseña), recargar periódicamente.
+  //    El intervalo se limpia en cuanto se verifica, al cambiar de usuario o al desmontar.
   useEffect(() => {
-    if (currentUser) {
-      // Recargar el usuario periódicamente para obtener el estado más reciente de verificación
-      const checkVerification = async () => {
-        try {
-          await currentUser.reload();
-          const verified = currentUser.emailVerified;
-          setEmailVerified(verified);
-        } catch (error) {
-          // Ignorar errores de red silenciosamente (pueden ser bloqueadores de anuncios)
-          if (
-            !error.message?.includes("ERR_BLOCKED_BY_CLIENT") &&
-            !error.code?.includes("network")
-          ) {
-            console.error("Error recargando usuario:", error);
-          }
-          // Si falla el reload, usar el valor actual
-          setEmailVerified(currentUser.emailVerified);
-        }
-      };
+    if (!currentUser || emailVerified || isSocialAuthUser(currentUser)) return undefined;
 
-      // Verificar inmediatamente
-      checkVerification();
+    let cancelled = false;
+    let interval = null;
 
-      // Verificar cada 5 segundos si no está verificado (reducir frecuencia para evitar errores)
-      const interval = currentUser.emailVerified ? null : setInterval(checkVerification, 5000);
+    const stop = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
 
-      return () => {
-        if (interval) {
-          clearInterval(interval);
-        }
-      };
-    } else {
-      setEmailVerified(false);
+    const check = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      try {
+        await currentUser.reload();
+      } catch (error) {
+        logger.debug("AuthContext: reload falló", error);
+      }
+      if (cancelled || auth.currentUser?.uid !== currentUser.uid) return;
+      if (currentUser.emailVerified) {
+        stop();
+        setEmailVerified(true);
+        // Token nuevo con email_verified=true.
+        currentUser.getIdToken(true).catch(() => {});
+      }
+    };
+
+    check();
+    interval = setInterval(check, VERIFICATION_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [currentUser, emailVerified]);
+
+  /** Recarga el usuario bajo demanda (p.ej. botón "Ya verifiqué mi correo"). */
+  const refreshEmailVerification = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) return false;
+    try {
+      await user.reload();
+    } catch (error) {
+      logger.debug("refreshEmailVerification: reload falló", error);
     }
-  }, [currentUser]);
+    setEmailVerified(Boolean(user.emailVerified));
+    return Boolean(user.emailVerified);
+  }, []);
 
-  const value = {
-    currentUser,
-    userProfile,
-    emailVerified,
-    initialAuthLoading,
-    isActionLoading,
-    setIsActionLoading,
-  };
+  const value = useMemo(
+    () => ({
+      currentUser,
+      userProfile,
+      role: userProfile?.role || null,
+      emailVerified,
+      isSocialAuth: isSocialAuthUser(currentUser),
+      initialAuthLoading,
+      isActionLoading,
+      setIsActionLoading,
+      refreshEmailVerification,
+    }),
+    [
+      currentUser,
+      userProfile,
+      emailVerified,
+      initialAuthLoading,
+      isActionLoading,
+      refreshEmailVerification,
+    ]
+  );
 
   return (
     <AuthContext.Provider value={value}>
-      {/* 👇 LA LÓGICA HÍBRIDA DEFINITIVA 👇 */}
-
-      {/* 1. Muestra el loader como overlay SOLO para acciones del usuario */}
+      {/* Overlay solo para acciones del usuario */}
       {isActionLoading && <FullScreenLoader />}
-
-      {/* 2. Muestra el loader de forma bloqueante en la carga inicial, 
-         o muestra la app si ya terminó. */}
+      {/* Carga inicial bloqueante */}
       {initialAuthLoading ? <FullScreenLoader /> : children}
     </AuthContext.Provider>
   );
