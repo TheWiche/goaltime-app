@@ -44,7 +44,7 @@ const ensureUserProfile = async (user, name) => {
 
   const profile = {
     uid: user.uid,
-    name: (name || user.displayName || user.email || "").trim(),
+    name: (name || user.displayName || user.email || "").trim().slice(0, 120), // reglas: <=120
     email: user.email || null,
     role: "cliente",
     createdAt: serverTimestamp(),
@@ -59,7 +59,7 @@ export const registerUser = async (name, email, password) => {
   const user = userCredential.user;
   const userProfile = {
     uid: user.uid,
-    name: (name || "").trim(),
+    name: (name || "").trim().slice(0, 120), // reglas: <=120
     email: user.email,
     role: "cliente",
     createdAt: serverTimestamp(),
@@ -101,9 +101,9 @@ export const loginUser = async (email, password, rememberMe) => {
     throw error;
   }
 
-  const userDocSnap = await getDoc(doc(db, "users", user.uid));
-  if (userDocSnap.exists()) return userDocSnap.data();
-  return { uid: user.uid, email: user.email, name: user.email, role: "cliente" };
+  // Si el registro no llegó a crear users/{uid} (p.ej. fallo de red tras crear la cuenta),
+  // se crea aquí con rol "cliente" (lo permiten las reglas) en vez de dejar la cuenta sin perfil.
+  return ensureUserProfile(user);
 };
 
 export const signInWithGoogle = async () => {

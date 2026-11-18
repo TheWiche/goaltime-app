@@ -357,7 +357,8 @@ service cloud.firestore {
         && favoriteId == uid() + '_' + request.resource.data.fieldId;
 
       allow update: if false;
-      allow delete: if signedIn() && resource.data.userId == uid();
+      // Borrar un favorito ya inexistente (doble clic / estado desfasado) es un no-op permitido.
+      allow delete: if signedIn() && (resource == null || resource.data.userId == uid());
     }
 
     // ------------------------------------------------------------ por defecto
