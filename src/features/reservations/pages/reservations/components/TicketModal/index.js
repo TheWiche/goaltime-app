@@ -1,11 +1,11 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
-import { Mail, Printer, QrCode, Ticket } from "lucide-react";
+import { Mail, Printer, QrCode, Ticket, XCircle } from "lucide-react";
 import { Button, Modal, StatusPill } from "shared/components/ui";
 import { sendTicketByEmail } from "shared/services/firebaseService";
 import { formatDateEs, formatDateTimeEs } from "shared/utils/date";
 import { escapeHtml, formatCurrency, formatReservationCode } from "shared/utils/format";
-import { getStatusMeta } from "shared/utils/reservationStatus";
+import { canClientCancelReservation, getStatusMeta } from "shared/utils/reservationStatus";
 
 const LONG_DATE = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
 
@@ -103,7 +103,7 @@ function buildPrintableTicket(reservation, userProfile) {
 </body></html>`;
 }
 
-function TicketModal({ open, onClose, reservation, userProfile, onNotify }) {
+function TicketModal({ open, onClose, reservation, userProfile, onNotify, onCancel, now }) {
   const [sendingEmail, setSendingEmail] = useState(false);
 
   if (!reservation) return null;
@@ -149,6 +149,17 @@ function TicketModal({ open, onClose, reservation, userProfile, onNotify }) {
       bodyClassName="space-y-5"
       footer={
         <>
+          {onCancel && canClientCancelReservation(reservation, now) && (
+            <Button
+              type="button"
+              variant="ghost"
+              leftIcon={<XCircle className="h-4 w-4" />}
+              onClick={() => onCancel(reservation)}
+              className="sm:mr-auto"
+            >
+              Cancelar reserva
+            </Button>
+          )}
           <Button type="button" variant="secondary" onClick={onClose}>
             Cerrar
           </Button>
@@ -216,6 +227,8 @@ TicketModal.propTypes = {
   reservation: PropTypes.object,
   userProfile: PropTypes.object,
   onNotify: PropTypes.func,
+  onCancel: PropTypes.func,
+  now: PropTypes.number,
 };
 
 export default TicketModal;

@@ -86,6 +86,7 @@ export {
   notifyReservationReceived,
   notifyReservationConfirmed,
   notifyReservationCancelled,
+  notifyReservationCancelledByClient,
   notifyReservationCompleted,
 } from "./notificationsService";
 

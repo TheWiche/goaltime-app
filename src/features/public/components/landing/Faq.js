@@ -21,8 +21,8 @@ const FAQS = [
   {
     q: "¿Puedo cancelar una reserva?",
     a: [
-      "Una reserva pendiente o confirmada puede pasar a cancelada, y en ese momento sus franjas vuelven a quedar libres. El dueño puede rechazarla o cancelarla desde su panel.",
-      "Si necesitas cancelar la tuya, habla con el dueño de la cancha (su teléfono aparece en el detalle de la cancha cuando lo ha publicado) o escríbenos desde el formulario de contacto.",
+      "Sí. Desde Mis reservaciones puedes cancelar tu reserva mientras esté pendiente o confirmada y todavía no haya comenzado. Puedes indicar un motivo (opcional), las franjas vuelven a quedar libres y el dueño recibe un aviso en la app.",
+      "Una vez que la hora de inicio ha pasado ya no se puede cancelar desde la app. El dueño también puede rechazar o cancelar una reserva desde su panel y recibirás un aviso y un correo con el nuevo estado.",
     ],
   },
   {

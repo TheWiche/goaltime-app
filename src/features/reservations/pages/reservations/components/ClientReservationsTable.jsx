@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { ChevronRight, Ticket } from "lucide-react";
+import { ChevronRight, Ticket, XCircle } from "lucide-react";
 import {
   Button,
   StatusPill,
@@ -14,12 +14,12 @@ import {
 } from "shared/components/ui";
 import { formatDateEs } from "shared/utils/date";
 import { formatCurrency } from "shared/utils/format";
-import { getStatusMeta } from "shared/utils/reservationStatus";
+import { canClientCancelReservation, getStatusMeta } from "shared/utils/reservationStatus";
 
 const SHORT_DATE = { weekday: "short", day: "numeric", month: "short", year: "numeric" };
 
 /** Reservas del cliente: tabla (≥ md) o tarjetas apiladas (< md). */
-function ClientReservationsTable({ reservations, onOpen }) {
+function ClientReservationsTable({ reservations, onOpen, onCancel, now }) {
   return (
     <>
       <div className="hidden md:block">
@@ -60,18 +60,35 @@ function ClientReservationsTable({ reservations, onOpen }) {
                     </StatusPill>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      leftIcon={<Ticket className="h-3.5 w-3.5" />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpen(r);
-                      }}
-                    >
-                      Ticket
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        leftIcon={<Ticket className="h-3.5 w-3.5" />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpen(r);
+                        }}
+                      >
+                        Ticket
+                      </Button>
+                      {onCancel && canClientCancelReservation(r, now) && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<XCircle className="h-3.5 w-3.5" />}
+                          aria-label={`Cancelar reserva en ${r.fieldName || "la cancha"}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCancel(r);
+                          }}
+                        >
+                          Cancelar reserva
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -118,6 +135,8 @@ function ClientReservationsTable({ reservations, onOpen }) {
 ClientReservationsTable.propTypes = {
   reservations: PropTypes.array.isRequired,
   onOpen: PropTypes.func.isRequired,
+  onCancel: PropTypes.func,
+  now: PropTypes.number,
 };
 
 export default ClientReservationsTable;

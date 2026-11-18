@@ -73,3 +73,16 @@ export const FIELD_STATUS = Object.freeze({
 
 export const getFieldStatusMeta = (status) =>
   FIELD_STATUS[status] || { value: status, label: status || "Desconocido", tone: "neutral" };
+
+/**
+ * ¿Puede el jugador cancelar esta reserva ahora? Solo pending|confirmed y mientras su
+ * fecha/hora de inicio (hora local) no haya llegado. Las reglas de Firestore no validan
+ * la hora: es una restricción de la app.
+ */
+export const canClientCancelReservation = (reservation, now = Date.now()) => {
+  if (!reservation || !getClientAllowedTransitions(reservation.status).length) return false;
+  const [y, m, d] = String(reservation.date || "").split("-").map(Number);
+  const [hh, mm] = String(reservation.startTime || "").split(":").map(Number);
+  if ([y, m, d, hh, mm].some((n) => !Number.isFinite(n))) return false;
+  return new Date(y, m - 1, d, hh, mm).getTime() > now;
+};

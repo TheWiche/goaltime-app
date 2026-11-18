@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarOff, CircleCheck, Flag, Hourglass, Lock, Plus, Search, XCircle } from "lucide-react";
-import { DashboardLayout, DashboardNavbar, Footer } from "shared/components/layout";
+import { ConfirmationDialog, DashboardLayout, DashboardNavbar, Footer } from "shared/components/layout";
 import {
   Button,
   EmptyState,
@@ -11,13 +11,19 @@ import {
   LoadMoreFooter,
   Skeleton,
   StatCard,
+  Textarea,
   TextField,
   Toast,
 } from "shared/components/ui";
 import { useAuth } from "shared/context/AuthContext";
-import { subscribeToClientReservations } from "shared/services/firebaseService";
+import {
+  cancelReservation,
+  notifyReservationCancelledByClient,
+  subscribeToClientReservations,
+} from "shared/services/firebaseService";
+import { formatDateEs } from "shared/utils/date";
 import useDebounce from "shared/hooks/useDebounce";
-import { getStatusOptions } from "shared/utils/reservationStatus";
+import { canClientCancelReservation, getStatusOptions } from "shared/utils/reservationStatus";
 import useLoadMore from "shared/hooks/useLoadMore";
 import ClientReservationsTable from "./components/ClientReservationsTable";
 import TicketModal from "./components/TicketModal";
@@ -61,6 +67,15 @@ function Reservations() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
   const [toast, setToast] = useState({ open: false, type: "info", message: "" });
+
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  // Reloj para ocultar "Cancelar reserva" cuando la reserva ya comenzó, sin recargar.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
 
   const showToast = useCallback((message, type = "info") => setToast({ open: true, type, message }), []);
 
@@ -109,6 +124,43 @@ function Reservations() {
     () => (selectedId ? reservations.find((r) => r.id === selectedId) || null : null),
     [selectedId, reservations]
   );
+
+  const requestCancel = (reservation) => {
+    setCancelReason("");
+    setSelectedId(null);
+    setCancelTarget(reservation);
+  };
+
+  const closeCancel = () => setCancelTarget(null);
+
+  // ConfirmationDialog bloquea el doble clic mientras esta promesa está pendiente.
+  const confirmCancel = async () => {
+    const target = cancelTarget;
+    if (!target) return;
+    if (!canClientCancelReservation(target)) {
+      showToast("Esta reserva ya no se puede cancelar porque ya comenzó.", "warning");
+      closeCancel();
+      return;
+    }
+    const reason = cancelReason.trim();
+    try {
+      const { reservation } = await cancelReservation(target.id, reason);
+      closeCancel();
+      showToast("Reserva cancelada. Las franjas quedaron libres.", "success");
+      const ownerId = reservation?.ownerId || target.ownerId;
+      if (ownerId) {
+        await notifyReservationCancelledByClient(
+          target.id,
+          target.fieldName || "tu cancha",
+          ownerId,
+          userProfile?.name || target.clientName,
+          reason
+        );
+      }
+    } catch (error) {
+      showToast(error?.message || "No se pudo cancelar la reserva.", "error");
+    }
+  };
 
   if (userProfile && !isClient) {
     return (
@@ -173,7 +225,14 @@ function Reservations() {
       />
     );
   } else {
-    body = <ClientReservationsTable reservations={pager.visibleItems} onOpen={(r) => setSelectedId(r.id)} />;
+    body = (
+      <ClientReservationsTable
+        reservations={pager.visibleItems}
+        onOpen={(r) => setSelectedId(r.id)}
+        onCancel={requestCancel}
+        now={now}
+      />
+    );
   }
 
   return (
@@ -245,7 +304,36 @@ function Reservations() {
         reservation={selectedReservation}
         userProfile={userProfile}
         onNotify={showToast}
+        onCancel={requestCancel}
+        now={now}
       />
+
+      <ConfirmationDialog
+        open={Boolean(cancelTarget)}
+        onClose={closeCancel}
+        onConfirm={confirmCancel}
+        title="¿Cancelar reserva?"
+        message={
+          cancelTarget
+            ? `Vas a cancelar tu reserva en ${cancelTarget.fieldName || "la cancha"} el ${formatDateEs(cancelTarget.date, { day: "numeric", month: "long", year: "numeric" }, cancelTarget.date)} de ${cancelTarget.startTime} a ${cancelTarget.endTime}. Las franjas quedarán libres y esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmColor="error"
+        confirmLabel="Cancelar reserva"
+        cancelLabel="Volver"
+      >
+        <Textarea
+          id="client-cancel-reason"
+          label="Motivo"
+          optional
+          rows={3}
+          maxLength={500}
+          className="mt-3"
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          placeholder="Ej. Ya no podré asistir."
+        />
+      </ConfirmationDialog>
 
       <Toast
         open={toast.open}

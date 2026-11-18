@@ -300,6 +300,26 @@ export const notifyReservationCancelled = (reservationId, fieldName, clientId) =
     "notifyReservationCancelled"
   );
 
+/** Aviso al DUEÑO de la cancha cuando el jugador cancela su propia reserva. */
+export const notifyReservationCancelledByClient = (reservationId, fieldName, ownerId, clientName, reason) => {
+  const who = clientName || "El jugador";
+  const base = `${who} canceló su reserva para "${fieldName}". Las franjas quedaron libres.`;
+  const withReason = reason ? `${base} Motivo: ${reason}` : base;
+  return safeNotify(
+    {
+      userId: ownerId,
+      type: "reservation_cancelled",
+      title: "Reserva cancelada por el jugador",
+      message: withReason.length <= 500 ? withReason : `${withReason.slice(0, 497)}...`,
+      relatedId: reservationId,
+      actionUrl: "/associate/reservations",
+      icon: "cancel",
+      color: "error",
+    },
+    "notifyReservationCancelledByClient"
+  );
+};
+
 export const notifyReservationCompleted = (reservationId, fieldName, clientId) =>
   safeNotify(
     {
