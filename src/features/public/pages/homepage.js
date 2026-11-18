@@ -1,43 +1,60 @@
-import { useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "shared/context/AuthContext";
+import { useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import PublicLayout from "shared/components/layout/PublicLayout";
-import { getHomePathForRole } from "shared/utils/url";
-import HeroSection from "features/public/components/HeroSection";
-import PlayersSection from "features/public/components/PlayersSection";
-import OwnersSection from "features/public/components/OwnersSection";
-import TestimonialsSection from "features/public/components/TestimonialsSection";
-import ContactSection from "features/public/components/ContactSection";
+import Hero from "features/public/components/landing/Hero";
+import HowItWorks from "features/public/components/landing/HowItWorks";
+import Features from "features/public/components/landing/Features";
+import Owners from "features/public/components/landing/Owners";
+import TrustFlow from "features/public/components/landing/TrustFlow";
+import Faq from "features/public/components/landing/Faq";
+import FinalCta from "features/public/components/landing/FinalCta";
+import Contact from "features/public/components/landing/Contact";
+import { useReveal } from "features/public/components/landing/primitives";
+import "features/public/landing.css";
 
+const DOC_TITLE = "GoalTime · Reserva canchas de fútbol en Riohacha";
+
+/**
+ * Landing pública. Decisión de producto: NO redirige a los usuarios con sesión; el header
+ * les ofrece "Ir a mi panel".
+ */
 function Homepage() {
-  const { currentUser, userProfile, emailVerified, isSocialAuth, initialAuthLoading } = useAuth();
-  const { state } = useLocation();
-  const navigate = useNavigate();
+  const { state, hash } = useLocation();
+  const rootRef = useRef(null);
 
-  // DECISIÓN DE PRODUCTO PENDIENTE: hoy la home redirige a los usuarios con sesión a su panel
-  // (verificados y con perfil). Si se quiere que puedan ver la home pública, basta con quitar este efecto.
-  useEffect(() => {
-    if (initialAuthLoading || !currentUser || !userProfile) return;
-    if (currentUser.emailVerified || emailVerified || isSocialAuth) {
-      navigate(getHomePathForRole(userProfile.role), { replace: true });
-    }
-  }, [initialAuthLoading, currentUser, userProfile, emailVerified, isSocialAuth, navigate]);
+  useReveal(rootRef);
 
-  // Navegación a una sección ancla desde otra página (state.scrollTo).
-  const scrollTarget = state?.scrollTo;
   useEffect(() => {
-    if (!scrollTarget) return;
-    document.getElementById(scrollTarget)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    navigate("/", { replace: true, state: null });
-  }, [scrollTarget, navigate]);
+    const previous = document.title;
+    document.title = DOC_TITLE;
+    return () => {
+      document.title = previous;
+    };
+  }, []);
+
+  // Navegación a una sección desde otra página (state.scrollTo) o por URL con #ancla.
+  // No se limpia el state: App.js vuelve arriba cuando cambia y anularía el desplazamiento.
+  const scrollTarget = state?.scrollTo || (hash ? decodeURIComponent(hash.slice(1)) : null);
+  useEffect(() => {
+    if (!scrollTarget) return undefined;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(scrollTarget)?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollTarget]);
 
   return (
     <PublicLayout>
-      <HeroSection />
-      <PlayersSection />
-      <OwnersSection />
-      <TestimonialsSection />
-      <ContactSection />
+      <div ref={rootRef}>
+        <Hero />
+        <HowItWorks />
+        <Features />
+        <Owners />
+        <TrustFlow />
+        <Faq />
+        <FinalCta />
+        <Contact />
+      </div>
     </PublicLayout>
   );
 }

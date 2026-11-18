@@ -45,8 +45,8 @@ function PrivacyPolicy() {
       <LegalSection title="3. Contacto">
         <p>
           Si tienes alguna pregunta sobre esta Política de Privacidad, contáctanos en{" "}
-          <a href="mailto:soporte@goaltime.site" className="font-medium text-primary-600 hover:underline">
-            soporte@goaltime.site
+          <a href="mailto:equipo@goaltime.site" className="font-medium text-primary-600 hover:underline">
+            equipo@goaltime.site
           </a>
           .
         </p>

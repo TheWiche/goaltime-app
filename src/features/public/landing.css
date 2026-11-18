@@ -1,0 +1,64 @@
+/*
+ * Landing pública de GoalTime: solo lo que Tailwind no expresa bien.
+ * - Reveal al hacer scroll (data-reveal + IntersectionObserver en useReveal).
+ *   El contenido es visible por defecto: solo se oculta si el JS activó `.reveal-on`
+ *   en el contenedor y el usuario no pidió reducir movimiento.
+ * - Rejilla de líneas finas del hero.
+ */
+
+.reveal-on [data-reveal] {
+  transition:
+    opacity 640ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 640ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+.reveal-on [data-reveal]:not(.is-revealed) {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0);
+}
+
+/* Franja seleccionada del mockup: se "marca" un instante después de aparecer. */
+.reveal-on [data-reveal] .lp-slot-pick {
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    color 300ms ease;
+  transition-delay: calc(var(--reveal-delay, 0ms) + 520ms);
+}
+
+.reveal-on [data-reveal]:not(.is-revealed) .lp-slot-pick {
+  background-color: #fff;
+  border-color: #d4d4d8;
+  color: #18181b;
+}
+
+/* Destinos de foco programático (skip link, anclas del header): sin anillo sobre toda la sección. */
+main[tabindex="-1"]:focus,
+section[tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* Líneas de la rejilla editorial (columnas) */
+.lp-grid-lines {
+  background-image: linear-gradient(to right, #f4f4f5 1px, transparent 1px);
+  background-size: calc(100% / 4) 100%;
+}
+
+@media (min-width: 1024px) {
+  .lp-grid-lines {
+    background-size: calc(100% / 12) 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-on [data-reveal],
+  .reveal-on [data-reveal] .lp-slot-pick {
+    transition: none !important;
+  }
+
+  .reveal-on [data-reveal]:not(.is-revealed) {
+    opacity: 1;
+    transform: none;
+  }
+}

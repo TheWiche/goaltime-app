@@ -1,31 +1,6 @@
+import { Link } from "react-router-dom";
 import PublicLayout from "shared/components/layout/PublicLayout";
-
-const blogPosts = [
-  {
-    title: "5 consejos para elegir la cancha sintética perfecta",
-    excerpt:
-      "Aprende a identificar el tipo de césped, la iluminación y otros factores clave para que tu próximo partido sea inolvidable.",
-    image:
-      "https://firebasestorage.googleapis.com/v0/b/goaltime-334a0.appspot.com/o/cancha1.jpg?alt=media&token=8540445f-4a00-4a81-9878-0d0505876402",
-    date: "5 de octubre de 2025",
-  },
-  {
-    title: "Conviértete en asociado GoalTime: digitaliza tus reservas",
-    excerpt:
-      "Descubre cómo nuestra plataforma te ayuda a maximizar la ocupación de tus canchas y reducir las llamadas.",
-    image:
-      "https://firebasestorage.googleapis.com/v0/b/goaltime-334a0.appspot.com/o/cancha2.jpg?alt=media&token=d14605e5-f481-4b13-a444-245842817d33",
-    date: "28 de septiembre de 2025",
-  },
-  {
-    title: "Beneficios del fútbol para la salud",
-    excerpt:
-      "No es solo un juego. Conoce los beneficios físicos y mentales de jugar fútbol regularmente con tus amigos.",
-    image:
-      "https://firebasestorage.googleapis.com/v0/b/goaltime-334a0.appspot.com/o/cancha3.jpg?alt=media&token=98a3c89b-1e24-425b-a7e8-8a8d1681a9c3",
-    date: "15 de septiembre de 2025",
-  },
-];
+import ButtonLink from "shared/components/layout/ButtonLink";
 
 function Blog() {
   return (
@@ -40,20 +15,18 @@ function Blog() {
       </div>
 
       <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 md:py-12 lg:px-8">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {blogPosts.map((post) => (
-            <article
-              key={post.title}
-              className="flex flex-col overflow-hidden rounded-lg border border-line bg-white"
-            >
-              <img src={post.image} alt="" className="aspect-[16/9] w-full border-b border-line object-cover" loading="lazy" />
-              <div className="flex flex-1 flex-col p-5">
-                <time className="text-xs text-fg-subtle">{post.date}</time>
-                <h2 className="mt-2 text-base font-semibold leading-snug text-fg-strong">{post.title}</h2>
-                <p className="mt-2 text-[13px] leading-5 text-fg-muted">{post.excerpt}</p>
-              </div>
-            </article>
-          ))}
+        <div className="rounded-lg border border-dashed border-line-strong bg-white px-6 py-14 text-center">
+          <h2 className="text-base font-semibold text-fg-strong">Aún no hay artículos publicados</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-fg-muted">
+            Estamos preparando contenido útil para jugadores y dueños de canchas. Mientras tanto, puedes explorar las
+            canchas disponibles o escribirnos.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <ButtonLink to="/authentication/sign-up">Crear cuenta</ButtonLink>
+            <Link to="/" className="inline-flex items-center px-3 py-2 text-sm font-medium text-primary-600 hover:underline">
+              Volver al inicio
+            </Link>
+          </div>
         </div>
       </div>
     </PublicLayout>
