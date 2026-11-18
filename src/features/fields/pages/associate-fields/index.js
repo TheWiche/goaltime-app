@@ -14,7 +14,7 @@ import {
   TextField,
   Toast,
 } from "shared/components/ui";
-import { createField, db, toggleFieldStatus, updateField } from "shared/services/firebaseService";
+import { createFieldWithImage, db, toggleFieldStatus, updateField } from "shared/services/firebaseService";
 import { useAuth } from "shared/context/AuthContext";
 import useDebounce from "shared/hooks/useDebounce";
 import useLoadMore from "shared/hooks/useLoadMore";
@@ -130,8 +130,16 @@ function AssociateFields() {
     setSaving(true);
     try {
       if (formState?.mode === "create") {
-        await createField(args[0]);
-        showToast("Cancha registrada. Quedó pendiente de aprobación.", "success");
+        const [payload, { imageFile = null, onProgress } = {}] = args;
+        const created = await createFieldWithImage(payload, imageFile, { onProgress });
+        if (created.imageError) {
+          showToast(
+            `Cancha registrada, pero la imagen no se pudo subir (${created.imageError}). Puedes añadirla editando la cancha.`,
+            "warning"
+          );
+        } else {
+          showToast("Cancha registrada. Quedó pendiente de aprobación.", "success");
+        }
       } else {
         const [fieldId, data] = args;
         const updated = await updateField(fieldId, data);

@@ -48,6 +48,7 @@ export {
   FIELD_EDITABLE_KEYS,
   sanitizeFieldData,
   createField,
+  createFieldWithImage,
   updateField,
   updateFieldAsAdmin,
   getFieldById,

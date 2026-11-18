@@ -3,7 +3,7 @@ import { MapPin } from "lucide-react";
 import { Button, Modal, StatusPill } from "shared/components/ui";
 import { formatCurrency } from "shared/utils/format";
 import { getFieldStatusMeta } from "shared/utils/reservationStatus";
-import { FieldCover } from "./FieldCard";
+import FieldCover from "features/fields/components/FieldCover";
 
 /** Detalle de una cancha (todos los roles). La acción principal depende del rol. */
 function FieldDetailModal({ open, field, role, onClose, onReserve, onEdit }) {

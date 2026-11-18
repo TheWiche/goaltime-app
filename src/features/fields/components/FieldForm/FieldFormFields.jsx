@@ -1,39 +1,17 @@
-import { useState } from "react";
 import PropTypes from "prop-types";
-import { ImageOff } from "lucide-react";
 import { TextField, Textarea } from "shared/components/ui";
+import FieldImageInput from "./FieldImageInput";
 
-function ImagePreview({ url }) {
-  const [failedUrl, setFailedUrl] = useState(null);
-  if (!url) return null;
-  if (failedUrl === url) {
-    return (
-      <div className="flex h-24 items-center justify-center gap-2 rounded-md border border-dashed border-line-strong bg-zinc-50 text-[13px] text-fg-muted">
-        <ImageOff className="h-4 w-4" aria-hidden />
-        No se pudo cargar la imagen.
-      </div>
-    );
-  }
-  return (
-    <div className="overflow-hidden rounded-md border border-line bg-zinc-50">
-      <img
-        src={url}
-        alt="Vista previa de la portada"
-        className="aspect-video w-full object-cover"
-        onError={() => setFailedUrl(url)}
-      />
-    </div>
-  );
-}
-
-ImagePreview.propTypes = { url: PropTypes.string };
+const isHttpUrl = (url) => /^https?:\/\//i.test(url);
 
 /**
  * Campos del formulario de cancha. Controlado: `values` + `onChange(nextValues)`.
  * `errors` (por campo) se muestran bajo cada control.
+ * `image` (opcional): estado del archivo de portada { file, error, progress, onFileChange, onError }.
  */
-function FieldFormFields({ values, errors = {}, onChange, disabled = false, idPrefix = "cancha" }) {
+function FieldFormFields({ values, errors = {}, onChange, disabled = false, idPrefix = "cancha", image = null }) {
   const set = (key) => (e) => onChange({ ...values, [key]: e.target.value });
+  const imageUrl = values.imageUrl.trim();
   const id = (k) => `${idPrefix}-${k}`;
 
   return (
@@ -128,20 +106,36 @@ function FieldFormFields({ values, errors = {}, onChange, disabled = false, idPr
       <section className="space-y-4 border-t border-line pt-6">
         <div>
           <h3 className="text-sm font-semibold text-fg-strong">Imagen de portada</h3>
-          <p className="text-[13px] text-fg-muted">URL https de una imagen horizontal (16:9).</p>
+          <p className="text-[13px] text-fg-muted">Se muestra en el catálogo y en el detalle de la cancha.</p>
         </div>
+        {image && (
+          <FieldImageInput
+            id={id("image-file")}
+            file={image.file}
+            url={!errors.imageUrl && isHttpUrl(imageUrl) ? imageUrl : null}
+            error={image.error}
+            progress={image.progress}
+            disabled={disabled}
+            onFileChange={image.onFileChange}
+            onError={image.onError}
+            onRemove={() => {
+              image.onFileChange(null);
+              onChange({ ...values, imageUrl: "" });
+            }}
+          />
+        )}
         <TextField
           id={id("image")}
-          label="URL de la imagen"
+          label={image ? "O pega la URL de una imagen" : "URL de la imagen"}
           type="url"
           optional
           value={values.imageUrl}
           onChange={set("imageUrl")}
           error={errors.imageUrl}
+          hint={image?.file ? "Se usará el archivo seleccionado en lugar de esta URL." : "Debe empezar por https://"}
           placeholder="https://…"
-          disabled={disabled}
+          disabled={disabled || Boolean(image?.file)}
         />
-        {!errors.imageUrl && <ImagePreview url={values.imageUrl.trim()} />}
       </section>
     </div>
   );
@@ -161,6 +155,13 @@ FieldFormFields.propTypes = {
   onChange: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
   idPrefix: PropTypes.string,
+  image: PropTypes.shape({
+    file: PropTypes.object,
+    error: PropTypes.string,
+    progress: PropTypes.number,
+    onFileChange: PropTypes.func.isRequired,
+    onError: PropTypes.func.isRequired,
+  }),
 };
 
 export default FieldFormFields;

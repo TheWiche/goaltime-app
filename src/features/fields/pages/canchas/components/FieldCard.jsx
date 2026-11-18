@@ -1,34 +1,12 @@
-import { forwardRef, useState } from "react";
+import { forwardRef } from "react";
 import PropTypes from "prop-types";
-import { Banknote, Clock, Heart, ImageOff, MapPin, Pencil } from "lucide-react";
+import { Banknote, Clock, Heart, MapPin, Pencil } from "lucide-react";
 import { Button, IconButton, StatusPill, cx } from "shared/components/ui";
 import { formatCurrency } from "shared/utils/format";
 import { getFieldStatusMeta } from "shared/utils/reservationStatus";
+import FieldCover from "features/fields/components/FieldCover";
 
-/** Imagen de portada 16:9 con placeholder neutro si falta o falla. */
-export function FieldCover({ src, alt, className = "" }) {
-  const [failedSrc, setFailedSrc] = useState(null);
-  const showImage = Boolean(src) && failedSrc !== src;
-  return (
-    <div className={cx("relative aspect-[16/9] overflow-hidden bg-zinc-100", className)}>
-      {showImage ? (
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={() => setFailedSrc(src)}
-        />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center text-fg-faint">
-          <ImageOff className="h-8 w-8" strokeWidth={1.5} aria-hidden />
-        </div>
-      )}
-    </div>
-  );
-}
-
-FieldCover.propTypes = { src: PropTypes.string, alt: PropTypes.string, className: PropTypes.string };
+export { FieldCover };
 
 const FieldCard = forwardRef(function FieldCard(
   {

@@ -9,6 +9,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db, requireUser, callHttpFunction } from "./firebaseApp";
+import { uploadFieldImage } from "./usersService";
 import { minutesFromTime } from "shared/utils/date";
 import { logger } from "shared/utils/logger";
 
@@ -117,6 +118,28 @@ export const createField = async (fieldData) => {
   } catch (error) {
     logger.error("createField", error);
     throw new Error(error.message || "Error al crear la cancha.");
+  }
+};
+
+/**
+ * Crea la cancha y, si hay archivo, sube la portada y guarda su URL en imageUrl.
+ * La subida va DESPUÉS de crear: storage.rules exige que canchas/{id} exista con ownerId = usuario.
+ * Si la cancha se crea pero la imagen falla, no se lanza: devuelve `imageError` con el motivo.
+ * @param {object} fieldData
+ * @param {File|null} imageFile
+ * @param {{onProgress?: (percent: number) => void}} [opts]
+ * @returns {Promise<object>} cancha creada (+ imageError si la imagen no se pudo guardar)
+ */
+export const createFieldWithImage = async (fieldData, imageFile, { onProgress } = {}) => {
+  const created = await createField(fieldData);
+  if (!imageFile) return created;
+  try {
+    const imageUrl = await uploadFieldImage(imageFile, created.id, { onProgress });
+    await updateField(created.id, { imageUrl });
+    return { ...created, imageUrl };
+  } catch (error) {
+    logger.error("createFieldWithImage", error);
+    return { ...created, imageError: error.message || "No se pudo subir la imagen." };
   }
 };
 

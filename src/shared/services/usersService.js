@@ -87,13 +87,19 @@ export const validateImageFile = (file) => {
   if (file.size >= MAX_IMAGE_BYTES) throw new Error("La imagen no puede ser mayor a 5MB.");
 };
 
-const uploadFile = (storagePath, file, customMetadata) =>
+const uploadFile = (storagePath, file, customMetadata, onProgress) =>
   new Promise((resolve, reject) => {
     const task = uploadBytesResumable(ref(storage, storagePath), file, {
       contentType: file.type,
       customMetadata,
     });
-    task.on("state_changed", null, reject, () => resolve(task.snapshot));
+    const progress =
+      typeof onProgress === "function"
+        ? (snap) => {
+            if (snap.totalBytes > 0) onProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+          }
+        : null;
+    task.on("state_changed", progress, reject, () => resolve(task.snapshot));
   });
 
 const storageErrorMessage = (error, fallback) => {
@@ -167,19 +173,26 @@ export const deleteProfilePhoto = async (userId) => {
 };
 
 /**
- * Sube una imagen de cancha a fields/{fieldId}/ (solo dueño asociado o admin).
+ * Sube una imagen de cancha a fields/{fieldId}/ (solo dueño asociado o admin; la cancha
+ * debe existir ya en Firestore porque storage.rules lee su ownerId).
+ * @param {File} file
+ * @param {string} fieldId
+ * @param {{onProgress?: (percent: number) => void}} [opts]
  * @returns {Promise<string>} downloadURL (guárdala en canchas/{id}.imageUrl con updateField).
  */
-export const uploadFieldImage = async (file, fieldId) => {
+export const uploadFieldImage = async (file, fieldId, { onProgress } = {}) => {
   const user = auth.currentUser;
   if (!user) throw new Error("No autenticado.");
   if (!fieldId) throw new Error("Cancha no válida.");
   validateImageFile(file);
   try {
     const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_").slice(-80);
-    const snapshot = await uploadFile(`fields/${fieldId}/${Date.now()}_${safeName}`, file, {
-      uploadedBy: user.uid,
-    });
+    const snapshot = await uploadFile(
+      `fields/${fieldId}/${Date.now()}_${safeName}`,
+      file,
+      { uploadedBy: user.uid },
+      onProgress
+    );
     return await getDownloadURL(snapshot.ref);
   } catch (error) {
     logger.error("uploadFieldImage", error);

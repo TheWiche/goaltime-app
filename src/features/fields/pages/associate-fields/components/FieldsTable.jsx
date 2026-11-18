@@ -1,3 +1,4 @@
+import { useState } from "react";
 import PropTypes from "prop-types";
 import { ExternalLink, ImageOff, Pencil, Power, PowerOff } from "lucide-react";
 import {
@@ -17,10 +18,17 @@ import { getFieldStatusMeta } from "shared/utils/reservationStatus";
 const canToggle = (field) => field.status === "approved" || field.status === "disabled";
 
 function Thumb({ field }) {
+  const [failedSrc, setFailedSrc] = useState(null);
   return (
     <span className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded border border-line bg-zinc-100 text-fg-faint">
-      {field.imageUrl ? (
-        <img src={field.imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+      {field.imageUrl && failedSrc !== field.imageUrl ? (
+        <img
+          src={field.imageUrl}
+          alt=""
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={() => setFailedSrc(field.imageUrl)}
+        />
       ) : (
         <ImageOff className="h-4 w-4" aria-hidden />
       )}
